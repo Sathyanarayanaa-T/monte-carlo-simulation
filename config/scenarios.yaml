@@ -1,0 +1,160 @@
+# Monte Carlo Simulation Scenario Configuration
+# SPEC.md Section 3 (Data-generating process) and Section 4 (Experiment grid)
+
+base_parameters:
+  # Sample size
+  n: 150
+
+  # 3.1 Latent contextual factors: B-i, B-ii, B-iii ~ N(0, 1)
+  latent_correlations:
+    B_i_B_ii: 0.35
+    B_i_B_iii: 0.30
+    B_ii_B_iii: 0.25
+
+  # 3.2 Latent individual factors: A_tech, A_mkt
+  # A_tech = 0.35 * B_i + 0.15 * B_iii + u1
+  # A_mkt  = 0.35 * B_ii + 0.15 * B_iii + u2
+  individual_factors:
+    A_tech:
+      weight_B_i: 0.35
+      weight_B_iii: 0.15
+    A_mkt:
+      weight_B_ii: 0.35
+      weight_B_iii: 0.15
+    residual_correlation: 0.30
+
+  # 3.3 Outcome (Commitment Intention, C)
+  # C_latent = linear part + non-linear part + noise
+  linear_weights:
+    A_tech: 0.30
+    A_mkt: 0.15
+    B_i: 0.20
+    B_ii: 0.10
+    B_iii: 0.15
+
+  # Non-linear part: form in {"none", "interaction", "threshold"}
+  non_linear_form: "none"
+  psi: 0.0          # variance share of non-linear part in C
+  threshold_cutoff: -0.5  # 1[A_tech < -0.5] for threshold non-linearity
+  r2_target: 0.35   # target R2 explained by signal (linear + non-linear)
+
+  # Outcome specificity: general startup intent latent G
+  general_intent_G:
+    weight_B_ii: 0.35
+    weight_B_i: 0.15
+    target_correlation_C: 0.50
+
+  # 3.4 Measurement layer
+  item_counts:
+    A_tech: 5   # TODO: placeholder item count from SPEC.md Section 3.4; replace with real FEDRS counts
+    A_mkt: 4    # TODO: placeholder item count from SPEC.md Section 3.4; replace with real FEDRS counts
+    B_i: 5      # TODO: placeholder item count from SPEC.md Section 3.4; replace with real FEDRS counts
+    B_ii: 4     # TODO: placeholder item count from SPEC.md Section 3.4; replace with real FEDRS counts
+    B_iii: 6    # TODO: placeholder item count from SPEC.md Section 3.4; replace with real FEDRS counts
+    C: 4        # TODO: placeholder item count from SPEC.md Section 3.4 (items 14 to 17); replace with real FEDRS counts
+    G: 4        # TODO: placeholder item count from SPEC.md Section 3.4; replace with real FEDRS counts
+    M: 4        # TODO: placeholder item count from SPEC.md Section 3.4; replace with real FEDRS counts
+
+  loadings_range:
+    min: 0.55
+    max: 0.85
+
+  # 20% of items per construct have loading sign flipped
+  reverse_keyed_indices:
+    A_tech: [4] # TODO: placeholder index for reverse-keyed item; replace with real survey instrument item
+    A_mkt: [3]  # TODO: placeholder index for reverse-keyed item; replace with real survey instrument item
+    B_i: [4]    # TODO: placeholder index for reverse-keyed item; replace with real survey instrument item
+    B_ii: [3]   # TODO: placeholder index for reverse-keyed item; replace with real survey instrument item
+    B_iii: [5]  # TODO: placeholder index for reverse-keyed item; replace with real survey instrument item
+    C: [3]      # TODO: placeholder index for reverse-keyed item; replace with real survey instrument item
+    G: [3]      # TODO: placeholder index for reverse-keyed item; replace with real survey instrument item
+    M: []       # Marker items have no substantive loading
+
+  acquiescence_gamma: 0.0  # base gamma = 0, sensitivity gamma = 0.3
+  ceiling_shift: 0.30      # base shift = +0.3, sensitivity shift = +0.6
+  discretisation_cut_points: [-1.5, -0.5, 0.5, 1.5]
+  reverse_score_max: 6     # 6 - x
+
+  # Cross-loading sensitivity: each B-i item also loads on A_tech
+  cross_loading: 0.0       # base value 0.0, sensitivity 0.30
+
+  # Contaminated outcome sensitivity: each C item loads on sqrt(1 - kappa^2)*C + kappa*G
+  kappa: 0.0               # base value 0.0, sensitivity 0.40
+
+  # 3.5 Covariates
+  covariates:
+    semester:
+      categories: [6, 7, 8]
+      probabilities: [0.333333, 0.333333, 0.333334] # TODO: placeholder uniform distribution; replace if cohort distribution is known
+    prior_exposure:
+      slope: 0.8
+      intercept: -0.4622187563605621 # calibrated for ~40% prevalence
+      target_prevalence: 0.40
+      flags:
+        prototype:
+          related_factor: "B_i"
+        hackathon:
+          related_factor: "B_ii"
+        internship:
+          related_factor: "B_i"
+
+# Grid parameter variations (Section 4)
+grid_presets:
+  linear_weights:
+    base:
+      A_tech: 0.30
+      A_mkt: 0.15
+      B_i: 0.20
+      B_ii: 0.10
+      B_iii: 0.15
+    h1_null:
+      A_tech: 0.0
+      A_mkt: 0.0
+      B_i: 0.20
+      B_ii: 0.10
+      B_iii: 0.15
+    h2_null:
+      A_tech: 0.30
+      A_mkt: 0.15
+      B_i: 0.15
+      B_ii: 0.15
+      B_iii: 0.15
+
+  latent_correlations:
+    base:
+      B_i_B_ii: 0.35
+      B_i_B_iii: 0.30
+      B_ii_B_iii: 0.25
+    low:
+      B_i_B_ii: 0.10
+      B_i_B_iii: 0.10
+      B_ii_B_iii: 0.10
+    high:
+      B_i_B_ii: 0.50
+      B_i_B_iii: 0.50
+      B_ii_B_iii: 0.50
+
+  loadings_range:
+    base:
+      min: 0.55
+      max: 0.85
+    low_reliability:
+      min: 0.40
+      max: 0.65
+
+  non_linear_cells:
+    none:
+      non_linear_form: "none"
+      psi: 0.0
+    interaction_small:
+      non_linear_form: "interaction"
+      psi: 0.03
+    interaction_medium:
+      non_linear_form: "interaction"
+      psi: 0.08
+    threshold_small:
+      non_linear_form: "threshold"
+      psi: 0.03
+    threshold_medium:
+      non_linear_form: "threshold"
+      psi: 0.08
