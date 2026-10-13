@@ -29,7 +29,7 @@ Milestone 1 implemented the complete Data-Generating Process (DGP) and validatio
    - Latent outcome $C = k_{lin} L_0 + k_{nl} N_0 + \epsilon$, where $Var(C) = 1.0$ and $\epsilon \sim N(0, 1 - R^2)$.
    - $k_{nl} = \sqrt{\psi / Var(N_0)}$ ensures $Var(k_{nl} N_0) = \psi$.
    - $k_{lin}$ is solved via the quadratic equation $a k_{lin}^2 + b k_{lin} + c = 0$ where $a = Var(L_0) > 0$, $b = 2 k_{nl} Cov(L_0, N_0)$, and $c = \psi - R^2 < 0$. Because $a > 0$ and $c < 0$, the discriminant $\Delta = b^2 - 4ac > 0$ is strictly positive and yields a unique strictly positive root $k_{lin} = (-b + \sqrt{b^2 - 4ac}) / (2a)$.
-   - For interaction ($A_{tech} \times B_i$) and none ($\psi = 0$), $Cov(L_0, N_0) = 0$, so $b = 0$ and $k_{lin} = \sqrt{(R^2 - \psi) / Var(L_0)}$.
+   - Added configuration switch `orthogonalise_nonlinear: true` (default true). When true, the planted non-linear term (interaction or threshold) is residualised on $A_{tech}, A_{mkt}, B\text{-}i, B\text{-}ii, B\text{-}iii$ using the calibration sample, so that $\psi$ represents the pure orthogonal non-linear variance share with $R^2 = 0.0$ linear contamination. When false, the unorthogonalised centered threshold term is scaled using the exact quadratic formula.
 2. **Latent G Calibration**:
    - $G = 0.35 B_{ii} + 0.15 B_i + w_C C + u_G$.
    - With $Var(C) = 1.0$, $Cov(G, C) = Cov(G_{sub}, C) + w_C$. Setting $Corr(G, C) = 0.50$ sets $w_C = 0.50 - Cov(G_{sub}, C)$.
@@ -39,7 +39,7 @@ Milestone 1 implemented the complete Data-Generating Process (DGP) and validatio
    - When $\gamma = 0$, marker items are pure independent noise.
 4. **Covariates**:
    - Semester: Categorical over $\{6, 7, 8\}$ with uniform probability $1/3$ each.
-   - Prior-exposure flags: Binary variables generated as $\mathbf{1}[u < \sigma(0.8 \cdot \theta + \alpha)]$. The intercept $\alpha = -0.4622187563605621$ was analytically integrated against standard normal $\theta$ to yield exactly 40.0% prevalence.
+   - Prior-exposure flags: Binary variables generated as $\mathbf{1}[u < \sigma(0.8 \cdot \theta + \alpha)]$. The intercept $\alpha$ is dynamically solved at scenario build from `slope` and `target_prevalence` via root-finding (`scipy.optimize.root_scalar` convolved with $N(0, 1)$), producing $\alpha \approx -0.462218756$ for exactly 40.0% prevalence without hardcoding numbers in YAML.
 5. **Reverse-Keyed Item Keying and Selection**:
    - For 20% reverse-keyed items, rounded to the nearest integer count per construct (1 item per construct for 4, 5, and 6-item constructs).
    - In accordance with SPEC.md Section 3.4, the loading sign is flipped on generation ($\lambda_j \to -\lambda_j$), and the resulting raw response is re-coded as $6 - x_{raw}$.

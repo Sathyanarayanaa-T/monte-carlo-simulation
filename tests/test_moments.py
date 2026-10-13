@@ -134,3 +134,28 @@ def test_covariates_moments(large_n_base_df):
     assert np.mean(proto) == pytest.approx(0.40, abs=0.015)
     assert np.mean(hack) == pytest.approx(0.40, abs=0.015)
     assert np.mean(intern) == pytest.approx(0.40, abs=0.015)
+
+
+def test_solved_logistic_intercept():
+    """Test that dynamically solved logistic intercept produces exact target prevalence."""
+    sc = dgp.build_scenario()
+    slope = float(sc["covariates"]["prior_exposure"]["slope"])
+    target_prev = float(sc["covariates"]["prior_exposure"]["target_prevalence"])
+    solved_intercept = float(sc["covariates"]["prior_exposure"]["intercept"])
+
+    # Verify analytical expectation via numerical integration against N(0, 1)
+    import scipy.integrate as integrate
+    import scipy.stats as stats
+
+    expected_prob, _ = integrate.quad(
+        lambda z: (1.0 / (1.0 + np.exp(-(slope * z + solved_intercept)))) * stats.norm.pdf(z),
+        -8.0, 8.0,
+    )
+    assert expected_prob == pytest.approx(target_prev, abs=1e-6)
+
+    # Verify empirical sample prevalence with large n
+    rng = np.random.default_rng(2026)
+    z = rng.normal(0.0, 1.0, size=200_000)
+    p = 1.0 / (1.0 + np.exp(-(slope * z + solved_intercept)))
+    flags = (rng.uniform(0.0, 1.0, size=200_000) < p).astype(int)
+    assert np.mean(flags) == pytest.approx(target_prev, abs=0.01)

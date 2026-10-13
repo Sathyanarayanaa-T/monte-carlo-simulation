@@ -37,6 +37,7 @@ base_parameters:
   psi: 0.0          # variance share of non-linear part in C
   threshold_cutoff: -0.5  # 1[A_tech < -0.5] for threshold non-linearity
   r2_target: 0.35   # target R2 explained by signal (linear + non-linear)
+  orthogonalise_nonlinear: true  # default true: residualise non-linear term on linear predictors for pure psi share
 
   # Outcome specificity: general startup intent latent G
   general_intent_G:
@@ -88,7 +89,6 @@ base_parameters:
       probabilities: [0.333333, 0.333333, 0.333334] # TODO: placeholder uniform distribution; replace if cohort distribution is known
     prior_exposure:
       slope: 0.8
-      intercept: -0.4622187563605621 # calibrated for ~40% prevalence
       target_prevalence: 0.40
       flags:
         prototype:

@@ -39,6 +39,23 @@ def load_config(config_path: str | Path = "config/scenarios.yaml") -> dict[str, 
         return yaml.safe_load(f)
 
 
+def solve_logistic_intercept(slope: float, target_prevalence: float) -> float:
+    """Solve for logistic intercept alpha such that E[sigma(slope * Z + alpha)] = target_prevalence for Z ~ N(0, 1)."""
+    import scipy.integrate as integrate
+    import scipy.optimize as optimize
+    import scipy.stats as stats
+
+    def obj(alpha: float) -> float:
+        val, _ = integrate.quad(
+            lambda z: (1.0 / (1.0 + np.exp(-(slope * z + alpha)))) * stats.norm.pdf(z),
+            -8.0, 8.0,
+        )
+        return val - target_prevalence
+
+    res = optimize.root_scalar(obj, bracket=[-10.0, 10.0], method="brentq")
+    return float(res.root)
+
+
 def build_scenario(
     scenario_override: dict[str, Any] | None = None,
     config_path: str | Path = "config/scenarios.yaml",
@@ -55,6 +72,14 @@ def build_scenario(
     else:
         scenario = copy.deepcopy(base_params)
         _deep_update(scenario, scenario_override)
+
+    # Solve logistic intercept if not explicitly provided in scenario
+    pe_cfg = scenario.get("covariates", {}).get("prior_exposure", {})
+    if "slope" in pe_cfg and "target_prevalence" in pe_cfg:
+        if "intercept" not in pe_cfg or pe_cfg["intercept"] is None:
+            pe_cfg["intercept"] = solve_logistic_intercept(
+                float(pe_cfg["slope"]), float(pe_cfg["target_prevalence"])
+            )
 
     return scenario
 
@@ -251,38 +276,59 @@ def calibrate_scenario(scenario: dict[str, Any]) -> dict[str, Any]:
     r2_target = float(scenario["r2_target"])
     psi = float(scenario["psi"])
     nl_form = str(scenario["non_linear_form"])
+    orth_nl = bool(scenario.get("orthogonalise_nonlinear", True))
+
+    cal_rng = np.random.default_rng(scenario.get("cal_seed", 99999))
+    n_cal = 200_000
+    B_cal = cal_rng.multivariate_normal([0.0, 0.0, 0.0], Sigma_B, size=n_cal)
+    Sigma_u = np.array([[var_u1, cov_u1_u2], [cov_u1_u2, var_u2]])
+    u_cal = cal_rng.multivariate_normal([0.0, 0.0], Sigma_u, size=n_cal)
+    A_tech_cal = w_A_tech[0] * B_cal[:, 0] + w_A_tech[2] * B_cal[:, 2] + u_cal[:, 0]
+    A_mkt_cal  = w_A_mkt[1] * B_cal[:, 1] + w_A_mkt[2] * B_cal[:, 2] + u_cal[:, 1]
+    L0_cal = (
+        beta_lin[0] * A_tech_cal
+        + beta_lin[1] * A_mkt_cal
+        + beta_lin[2] * B_cal[:, 0]
+        + beta_lin[3] * B_cal[:, 1]
+        + beta_lin[4] * B_cal[:, 2]
+    )
+    X_cal = np.column_stack([A_tech_cal, A_mkt_cal, B_cal[:, 0], B_cal[:, 1], B_cal[:, 2]])
+    X_cal_const = np.column_stack([np.ones(n_cal), X_cal])
+
+    nl_orth_coefs = None
+    N0_cal = None
 
     if nl_form == "none" or psi <= 0.0:
         k_nl = 0.0
         E_N0 = 0.0
         var_N0 = 0.0
         k_lin = np.sqrt(r2_target / var_L0)
+    elif orth_nl:
+        if nl_form == "interaction":
+            raw_nl_cal = A_tech_cal * B_cal[:, 0]
+        elif nl_form == "threshold":
+            c_thresh = float(scenario["threshold_cutoff"])
+            raw_nl_cal = B_cal[:, 2] * (A_tech_cal < c_thresh)
+        else:
+            raise ValueError(f"Unknown non_linear_form: {nl_form}")
+
+        # Residualise non-linear term on linear predictors (including intercept)
+        nl_orth_coefs = np.linalg.lstsq(X_cal_const, raw_nl_cal, rcond=None)[0]
+        N0_cal = raw_nl_cal - X_cal_const @ nl_orth_coefs
+        E_N0 = 0.0
+        var_N0 = float(np.var(N0_cal))
+        k_nl = np.sqrt(psi / var_N0)
+        # N0_cal is strictly orthogonal to linear predictors, so Cov(L0, N0) = 0
+        k_lin = np.sqrt((r2_target - psi) / var_L0)
     elif nl_form == "interaction":
-        # Product A_tech * B_i: E[P] = Cov(A_tech, B_i) = Sigma_5[0, 2]
-        # Var(P) = 1 + Cov(A_tech, B_i)^2 (for zero-mean bivariate normal)
+        # Unorthogonalised interaction: z-scored product A_tech * B_i
         cov_A_tech_B_i = Sigma_5[0, 2]
         E_N0 = cov_A_tech_B_i
         var_N0 = 1.0 + cov_A_tech_B_i**2
-        # Interaction is z-scored: N_0 = (P - E_N0) / sqrt(var_N0), so Var(z-scored N_0) = 1.0
-        # By symmetry of zero-mean multivariate normal, Cov(L_0, N_0) = 0
         k_nl = np.sqrt(psi)
         k_lin = np.sqrt((r2_target - psi) / var_L0)
     elif nl_form == "threshold":
-        # Numerical calibration using a high-precision sample (200,000 draws)
-        cal_rng = np.random.default_rng(scenario.get("cal_seed", 99999))
-        n_cal = 200_000
-        B_cal = cal_rng.multivariate_normal([0.0, 0.0, 0.0], Sigma_B, size=n_cal)
-        Sigma_u = np.array([[var_u1, cov_u1_u2], [cov_u1_u2, var_u2]])
-        u_cal = cal_rng.multivariate_normal([0.0, 0.0], Sigma_u, size=n_cal)
-        A_tech_cal = w_A_tech[0] * B_cal[:, 0] + w_A_tech[2] * B_cal[:, 2] + u_cal[:, 0]
-        A_mkt_cal  = w_A_mkt[1] * B_cal[:, 1] + w_A_mkt[2] * B_cal[:, 2] + u_cal[:, 1]
-        L0_cal = (
-            beta_lin[0] * A_tech_cal
-            + beta_lin[1] * A_mkt_cal
-            + beta_lin[2] * B_cal[:, 0]
-            + beta_lin[3] * B_cal[:, 1]
-            + beta_lin[4] * B_cal[:, 2]
-        )
+        # Unorthogonalised threshold: centered threshold term with full quadratic scaling
         c_thresh = float(scenario["threshold_cutoff"])
         T_cal = B_cal[:, 2] * (A_tech_cal < c_thresh)
         E_N0 = float(np.mean(T_cal))
@@ -299,24 +345,10 @@ def calibrate_scenario(scenario: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"Unknown non_linear_form: {nl_form}")
 
     # 6. Latent G Calibration (Section 3.3)
-    # Calibrate w_C and var_uG using numerical population moments
-    cal_rng = np.random.default_rng(scenario.get("cal_seed", 99999))
-    n_cal = 200_000
-    B_cal = cal_rng.multivariate_normal([0.0, 0.0, 0.0], Sigma_B, size=n_cal)
-    Sigma_u = np.array([[var_u1, cov_u1_u2], [cov_u1_u2, var_u2]])
-    u_cal = cal_rng.multivariate_normal([0.0, 0.0], Sigma_u, size=n_cal)
-    A_tech_cal = w_A_tech[0] * B_cal[:, 0] + w_A_tech[2] * B_cal[:, 2] + u_cal[:, 0]
-    A_mkt_cal  = w_A_mkt[1] * B_cal[:, 1] + w_A_mkt[2] * B_cal[:, 2] + u_cal[:, 1]
-    L0_cal = (
-        beta_lin[0] * A_tech_cal
-        + beta_lin[1] * A_mkt_cal
-        + beta_lin[2] * B_cal[:, 0]
-        + beta_lin[3] * B_cal[:, 1]
-        + beta_lin[4] * B_cal[:, 2]
-    )
-
     if nl_form == "none" or psi <= 0.0:
         nl_cal = np.zeros(n_cal)
+    elif orth_nl and nl_orth_coefs is not None and N0_cal is not None:
+        nl_cal = k_nl * N0_cal
     elif nl_form == "interaction":
         P_cal = A_tech_cal * B_cal[:, 0]
         nl_cal = k_nl * ((P_cal - E_N0) / np.sqrt(var_N0))
@@ -354,6 +386,8 @@ def calibrate_scenario(scenario: dict[str, Any]) -> dict[str, Any]:
         "k_nl": k_nl,
         "E_N0": E_N0,
         "var_N0": var_N0,
+        "orthogonalise_nonlinear": orth_nl,
+        "nl_orth_coefs": nl_orth_coefs,
         "w_G_B_ii": w_G_B_ii,
         "w_G_B_i": w_G_B_i,
         "w_C": w_C,
@@ -441,11 +475,23 @@ def generate(
 
     if nl_form == "none" or float(scenario_dict["psi"]) <= 0.0:
         non_linear_part = np.zeros(n, dtype=np.float64)
+    elif cal.get("nl_orth_coefs") is not None:
+        X_preds = np.column_stack([A_tech, A_mkt, B_i, B_ii, B_iii])
+        X_const = np.column_stack([np.ones(n), X_preds])
+        if nl_form == "interaction":
+            raw_nl = A_tech * B_i
+        elif nl_form == "threshold":
+            c_thresh = float(scenario_dict["threshold_cutoff"])
+            raw_nl = B_iii * (A_tech < c_thresh)
+        else:
+            raise ValueError(f"Unknown non_linear_form: {nl_form}")
+        non_linear_part = k_nl * (raw_nl - X_const @ cal["nl_orth_coefs"])
     elif nl_form == "interaction":
-        # z-scored product A_tech * B_i
+        # z-scored product A_tech * B_i (unorthogonalised)
         P = A_tech * B_i
         non_linear_part = k_nl * ((P - E_N0) / np.sqrt(var_N0))
     elif nl_form == "threshold":
+        # Centered threshold (unorthogonalised)
         c_thresh = float(scenario_dict["threshold_cutoff"])
         T = B_iii * (A_tech < c_thresh)
         non_linear_part = k_nl * (T - E_N0)
