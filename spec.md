@@ -1,3 +1,4 @@
+<!-- Change Log: Updated Section 3.3 (psi pure non-linear share after residualising; loadings equispaced by default), Section 3.4 (ceiling-shift in scored direction), Section 4 (Tier 2 14-scenario grid), Section 10 (structural-validity gate evaluated at n=100 and n=150). -->
 Monte Carlo Simulation Plan: Validating the FEDRS Analysis Pipeline
 Prepared for Sathyanarayanaa T | Draft v2 (reviewer-criticism revision) | 13 October 2026
 1. Purpose and scope
@@ -41,16 +42,16 @@ Non-linear part. Three forms:
 •	Interaction: the z-scored product A_tech × B-i (technical resilience matters more when technical exposure is high, the paper's own example).
 •	Threshold: B-iii × 1[A_tech < −0.5] (the safety net matters only for low-resilience students, the paper's other example).
 •	None: the null case.
-Scaling. The linear and non-linear parts are rescaled so that together they explain a target R² (base 0.35, sensitivity 0.20). The non-linear part takes a variance share ψ of C: 0 (none), 0.03 (small), 0.08 (medium). The noise term takes the rest.
+Scaling. The planted non-linear part is residualised against the linear predictors so that ψ is the pure non-linear share after residualising: 0 (none), 0.03 (small), 0.08 (medium). The linear and non-linear parts are rescaled so that together they explain a target R² (base 0.35, sensitivity 0.20). The noise term takes the rest.
 These effect sizes are assumptions, not literature estimates. Before finalising, pull plausible ranges from the studies the paper cites and record the source or reasoning for each value.
 Outcome specificity (added after review). C is the deeptech commitment latent. Its items (14 to 17) must be worded around multi-year R&D horizons, capital intensity and technical feasibility risk. A separate latent G, general startup intent (4 items on low-capital, short-cycle ventures), is generated from B-ii (weight 0.35), B-i (0.15) and C so that corr(G, C) is about 0.5. In the contaminated-outcome sensitivity, each C item loads on a mix, x* = λ(√(1−κ²)·C + κ·G) + e, with κ = 0.4. This tests whether H2 survives when respondents read C partly as generic startup intent. G enters every model as a covariate, as planned for the real analysis.
 3.4 Measurement layer
 Do not simulate the sub-construct scores directly. Simulate items, then score them as the real analysis will.
 •	Items per construct (placeholders; replace with real FEDRS counts): A-i 5, A-ii 4, B-i 5, B-ii 4, B-iii 6, C 4 (items 14 to 17).
 •	Item model: x*_ij = λ_j · θ_i + γ · a_i + e_ij, then standardised. θ_i is the construct's latent score and a_i ~ N(0,1) is a respondent-level acquiescence factor shared by all items (common-method bias). Base γ = 0, sensitivity γ = 0.3.
-•	Loadings: λ_j ~ Uniform(0.55, 0.85), drawn once per item per scenario and fixed across replications. This gives omega of roughly 0.75 to 0.85. The low-reliability sensitivity uses Uniform(0.40, 0.65), giving roughly 0.55 to 0.70.
+•	Loadings: λ_j are equispaced across the loading range by default (0.55 to 0.85 in base, giving omega of roughly 0.75 to 0.85; 0.40 to 0.65 in low-reliability, giving roughly 0.55 to 0.70), fixed across replications. Random uniform draws remain available for sensitivity.
 •	Reverse-keyed items: 20 percent of items per construct have the loading sign flipped, and are re-coded as 6 − x in scoring, matching the paper's protocol.
-•	Discretisation: cut x* + shift at −1.5, −0.5, 0.5 and 1.5 to give categories 1 to 5. Base shift +0.3 (mild ceiling, typical of self-rated resilience). Sensitivity shift +0.6.
+•	Discretisation: cut at −1.5, −0.5, 0.5 and 1.5 to give categories 1 to 5. Base ceiling shift +0.3 (mild ceiling, typical of self-rated resilience), sensitivity shift +0.6. The ceiling shift applies in the scored direction: it pushes every item toward category 5 of its scored scale (for reverse-keyed items, subtracting the shift from raw propensity before discretisation). Marker items are unaffected.
 •	Scoring: sub-construct score = mean of its items after reverse-scoring. Individual Resilience Index = mean of A-i and A-ii items. Contextual Exposure Index = mean of Part B items.
 •	General startup intent G (control, added after review): 4 items, loadings Uniform(0.55, 0.85), same discretisation.
 •	Marker variable M (added after review): 4 items that load only on the acquiescence factor a_i (same weight as the other items) plus noise, with no substantive loading. The marker is only informative when γ > 0.
@@ -74,7 +75,7 @@ Sensitivity grid (32 scenarios). One factor changed at a time from base, at n �
 •	B-i items cross-loading on A-i (loading 0.3)
 •	Contaminated outcome (κ = 0.4)
 Correction: the correlation factor has two settings (high and low), so the original list had 6 settings, not 5. With the two settings added after review, that is 8 settings × 2 sample sizes × 2 non-linearity cells = 32 scenarios, for 60 in total. Acquiescence at γ = 0.3 is also analysed with and without marker adjustment, which adds analysis arms, not scenarios.
-Replications. R = 1000 for OLS-family methods and R = 300 for ML-family methods, which cost far more. The Monte Carlo standard error of a rate p is sqrt(p(1−p)/R). For p = 0.80 it is 0.013 at R = 1000 and 0.023 at R = 300. For p = 0.05 it is 0.007 and 0.013. Report these with every rate.
+Replications. R = 1000 for OLS-family methods (Tier 1: all 60 scenarios) and R = 300 for ML-family methods (Tier 2: reduced ML grid of exactly 14 scenarios: {none, inter_small, inter_med, thresh_small, thresh_med} at n=100 and n=150, plus {none, inter_med} at n=50 and n=300), which cost far more. The Monte Carlo standard error of a rate p is sqrt(p(1−p)/R). For p = 0.80 it is 0.013 at R = 1000 and 0.023 at R = 300. For p = 0.05 it is 0.007 and 0.013. Report these with every rate.
 5. Methods under test
 All predictors are z-scored within each training fold. Covariates are included in every model.
 ID	Method	Purpose
@@ -189,7 +190,7 @@ Fix these before the main run and register the plan with a timestamp (for exampl
 •	Sample size. The minimum n is the smallest value at which M1 reaches at least 80 percent power for H1 and H2 under the base DGP. If no tested n reaches it, say so and revise the hypotheses.
 •	Does ML add value? The ML methods are an exploratory benchmark. Confirmatory tests stay with moderated regression (M1, M2a). M4, M5 or M6 is reported as adding value only if its out-of-sample R² exceeds that of M3 (elastic net) by at least δ, with the paired-bootstrap interval across repeated nested CV excluding zero. δ starts at 0.02 and is recalibrated from the simulation so that it exceeds the noise in the R² difference at n = 100 to 150. Otherwise the paper reports no detectable added value at this sample size, which does not show that non-linear effects are absent. This rule is fixed before real data are seen.
 •	H3 rewrite. Replace the current wording with a specific, falsifiable claim tested by the null-calibrated rule, naming the interaction in advance.
-•	Structural-validity gate (added after review). If HTMT for A-i with B-i, or for C with G, exceeds 0.85 in the real data, the affected hypothesis is revised or dropped before it is tested. The simulation sets how reliable this rule is. If the flag rate under 0.3 cross-loading is below 70 percent at n = 120 (a starting value, not a standard), the paper says the check is weak.
+•	Structural-validity gate (added after review). If HTMT for A-i with B-i, or for C with G, exceeds 0.85 in the real data, the affected hypothesis is revised or dropped before it is tested. The simulation sets how reliable this rule is. The structural-validity gate is evaluated at n = 100 and n = 150 (the simulation grid has no n = 120), reporting exact empirical flag rates with Monte Carlo Standard Error (MCSE) and no interpolation. If the flag rate under 0.3 cross-loading is below 70 percent, the paper says the check is weak.
 •	Method-bias gate (added after review). Report H1 and H2 both unadjusted and marker-adjusted. If adjustment changes the conclusion in the simulation at the assumed γ, treat the marker-adjusted real-data result as primary.
 Figures and tables.
 1.	Power curves by n for H1 and H2.

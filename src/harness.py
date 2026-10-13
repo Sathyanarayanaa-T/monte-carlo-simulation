@@ -199,6 +199,7 @@ def run_nested_cv(
         "active_methods": active_methods,
         "X_block2": X_block2,
         "y": y,
+        "data": data,
     }
     output.update(full_fits)
     return output

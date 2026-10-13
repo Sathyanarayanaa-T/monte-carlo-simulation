@@ -18,6 +18,7 @@ from scipy import stats
 import statsmodels.api as sm
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 
+from src.measurement import harman_first_factor_share, htmt, parallel_analysis
 from src.methods.residual_resampling import SUBSTANTIVE_COLS_DEFAULT
 from src.oracle import FEATURE_NAMES, oracle_importance
 
@@ -76,8 +77,9 @@ def compute_replication_metrics(
     oracle_ranking: list[str] | None = None,
     run_stability: bool = False,
     n_bootstraps: int = 50,
+    data: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
-    """Extract metrics A, B, C, D, E, and H from a single simulation replication fit."""
+    """Extract metrics A, B, C, D, E, H, and measurement checks from a single replication fit."""
     oos = cv_output["oos_metrics"]
     X_block2 = cv_output.get("X_block2")
     y = cv_output.get("y")
@@ -92,10 +94,18 @@ def compute_replication_metrics(
         "score_B_iii": float(lin_weights.get("B_iii", 0.15)),
     }
 
-    # Oracle ground truth ranking
+    # Oracle ground truth ranking and tie detection (Part C)
+    is_tied_scenario = False
     if oracle_ranking is None:
         try:
             oracle_imps = oracle_importance(scenario_dict, n_pop=50_000, seed=42, n_repeats=1)
+            sorted_imps = sorted(oracle_imps.values(), reverse=True)
+            for i in range(len(sorted_imps) - 1):
+                v1 = sorted_imps[i]
+                v2 = sorted_imps[i + 1]
+                if max(v1, v2) > 0 and (abs(v1 - v2) / max(v1, v2)) < 0.10:
+                    is_tied_scenario = True
+                    break
             oracle_sub_ranking = sorted(
                 SUBSTANTIVE_COLS_DEFAULT,
                 key=lambda f: oracle_imps.get(f.replace("score_", ""), 0.0),
@@ -219,10 +229,14 @@ def compute_replication_metrics(
 
     def evaluate_ranking(ranking: list[str], prefix: str):
         method_ranks = [ranking.index(c) for c in SUBSTANTIVE_COLS_DEFAULT]
-        tau = float(stats.kendalltau(oracle_ranks, method_ranks).statistic)
-        tau = 1.0 if np.isnan(tau) else tau
-        top1 = int(ranking[0] == oracle_sub_ranking[0])
-        top2 = int(set(ranking[:2]) == set(oracle_sub_ranking[:2]))
+        res = stats.kendalltau(oracle_ranks, method_ranks, variant="b")
+        tau = float(res.statistic) if not np.isnan(res.statistic) else 1.0
+        if is_tied_scenario:
+            top1 = float("nan")
+            top2 = float("nan")
+        else:
+            top1 = float(int(ranking[0] == oracle_sub_ranking[0]))
+            top2 = float(int(set(ranking[:2]) == set(oracle_sub_ranking[:2])))
         metric_c[f"{prefix}_kendall_tau"] = tau
         metric_c[f"{prefix}_top1_recovery"] = top1
         metric_c[f"{prefix}_top2_recovery"] = top2
@@ -292,6 +306,52 @@ def compute_replication_metrics(
             "h2_conclusion_changed": int(m1.h2_hit_ != m1_adj["h2_hit"]),
         }
 
+    # -------------------------------------------------------------------------
+    # Measurement Checks (SPEC.md Section 5 & 10, Milestone 6.5 Part B)
+    # -------------------------------------------------------------------------
+    metric_meas = {}
+    survey_data = data if data is not None else cv_output.get("data")
+    if survey_data is not None:
+        cols_a_tech = [c for c in survey_data.columns if c.startswith("A_tech_") and c[len("A_tech_"):].isdigit()]
+        cols_b_i = [c for c in survey_data.columns if c.startswith("B_i_") and c[len("B_i_"):].isdigit()]
+        cols_a_mkt = [c for c in survey_data.columns if c.startswith("A_mkt_") and c[len("A_mkt_"):].isdigit()]
+        cols_b_ii = [c for c in survey_data.columns if c.startswith("B_ii_") and c[len("B_ii_"):].isdigit()]
+        cols_c = [c for c in survey_data.columns if c.startswith("C_") and c[len("C_"):].isdigit()]
+        cols_g = [c for c in survey_data.columns if c.startswith("G_") and c[len("G_"):].isdigit()]
+
+        pa_iter = int(scenario_dict.get("pa_n_iter", 100))
+
+        if cols_a_tech and cols_b_i:
+            metric_meas["htmt_A_tech_B_i"] = float(htmt(survey_data[cols_a_tech + cols_b_i], {"A_tech": cols_a_tech, "B_i": cols_b_i}))
+            metric_meas["pa_factors_A_tech_B_i"] = int(parallel_analysis(survey_data[cols_a_tech + cols_b_i].to_numpy(dtype=np.float64), n_iter=pa_iter))
+
+        if cols_a_mkt and cols_b_ii:
+            metric_meas["htmt_A_mkt_B_ii"] = float(htmt(survey_data[cols_a_mkt + cols_b_ii], {"A_mkt": cols_a_mkt, "B_ii": cols_b_ii}))
+            metric_meas["pa_factors_A_mkt_B_ii"] = int(parallel_analysis(survey_data[cols_a_mkt + cols_b_ii].to_numpy(dtype=np.float64), n_iter=pa_iter))
+
+        if cols_c and cols_g:
+            metric_meas["htmt_C_G"] = float(htmt(survey_data[cols_c + cols_g], {"C": cols_c, "G": cols_g}))
+            metric_meas["pa_factors_C_G"] = int(parallel_analysis(survey_data[cols_c + cols_g].to_numpy(dtype=np.float64), n_iter=pa_iter))
+
+        all_study_items = [
+            c for c in survey_data.columns
+            if any(c.startswith(f"{p}_") and c[len(p)+1:].isdigit() for p in ["A_tech", "A_mkt", "B_i", "B_ii", "B_iii", "C"])
+        ]
+        if all_study_items:
+            metric_meas["harman_first_factor_share"] = float(harman_first_factor_share(survey_data[all_study_items]))
+
+        if m1_adj is not None and "r_M" in m1_adj:
+            metric_meas["marker_r_M"] = float(m1_adj["r_M"])
+        elif "score_M" in survey_data.columns:
+            m_vals = survey_data["score_M"].to_numpy(dtype=np.float64)
+            subst_scores = ["score_A_tech", "score_A_mkt", "score_B_i", "score_B_ii", "score_B_iii", "score_C"]
+            metric_meas["marker_r_M"] = float(np.mean([
+                abs(np.corrcoef(m_vals, survey_data[col].to_numpy(dtype=np.float64))[0, 1])
+                for col in subst_scores if col in survey_data.columns
+            ]))
+        else:
+            metric_meas["marker_r_M"] = 0.0
+
     # Combine into single flat dictionary
     row = {}
     row.update(metric_a)
@@ -300,4 +360,5 @@ def compute_replication_metrics(
     row.update(metric_d)
     row.update(metric_e)
     row.update(metric_h)
+    row.update(metric_meas)
     return row

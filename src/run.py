@@ -48,7 +48,7 @@ PACKAGE_LIST = [
     "statsmodels",
     "scikit-learn",
     "shap",
-    "interpret",
+    "interpret-core",
     "joblib",
     "pyarrow",
     "matplotlib",
@@ -129,13 +129,16 @@ def get_scenarios_for_tier(
             if sc["name"].startswith("base_n") or sc["name"].startswith("h1_null") or sc["name"].startswith("h2_null")
         ]
     elif scenarios_rule == "reduced_ml":
-        # 14 key core scenarios: n in {100, 150} across all 5 non-linear cells + 2 nulls
+        # Exactly 14 scenarios:
+        # {none, inter_small, inter_med, thresh_small, thresh_med} at n=100 and n=150 (10 scenarios),
+        # plus {none, inter_med} at n=50 and n=300 (4 scenarios).
         target_names = set()
         for n in [100, 150]:
             for cell in ["none", "inter_small", "inter_med", "thresh_small", "thresh_med"]:
                 target_names.add(f"base_n{n}_{cell}")
-            target_names.add(f"h1_null_n{n}")
-            target_names.add(f"h2_null_n{n}")
+        for n in [50, 300]:
+            for cell in ["none", "inter_med"]:
+                target_names.add(f"base_n{n}_{cell}")
         return [sc for sc in valid_scenarios if sc["name"] in target_names]
     elif isinstance(scenarios_rule, list):
         return [catalog[k] if k in catalog else build_scenario(k) for k in scenarios_rule]
@@ -184,7 +187,7 @@ def run_single_replication(
         )
 
         # Compute metrics
-        row = compute_replication_metrics(cv_out, scenario)
+        row = compute_replication_metrics(cv_out, scenario, data=df)
         row["replication"] = rep
         row["scenario"] = sc_name
         row["status"] = "SUCCESS"
@@ -362,6 +365,109 @@ def run_scenario(
     return df_results, True
 
 
+def estimate_replication_seconds(
+    methods: list[str],
+    n: int,
+    run_ml_tests: bool = False,
+    run_stability: bool = True,
+    b_null_refits: int = 50,
+) -> float:
+    """Estimate seconds per replication based on active methods and sample size n."""
+    # Scale factor relative to benchmark n=150
+    # OLS methods scale sublinearly to moderately linearly with n
+    n_scale = (n / 150.0) ** 0.65
+
+    # Base cost of 10 outer folds (5-fold x 2 repeats) per method at n=150
+    method_costs_n150 = {
+        "M0": 0.001,
+        "M1": 0.060,
+        "M2a": 0.050,
+        "M2b": 0.700,
+        "M3": 1.200 if run_stability else 0.250,
+        "M4": 12.000 if run_stability else 4.000,
+        "M5": 35.000 if run_stability else 12.000,
+        "M6": 10.000 if run_stability else 3.500,
+    }
+
+    total_sec = sum(method_costs_n150.get(m, 0.0) for m in methods) * n_scale
+
+    # Measurement checks cost (HTMT, Harman, Horn PA, Lindell-Whitney)
+    total_sec += 0.040 * n_scale
+
+    # Residual-resampling null interaction test cost (B=50 or B=100)
+    if run_ml_tests:
+        null_test_sec_n150 = 6.000 * (b_null_refits / 50.0)
+        total_sec += null_test_sec_n150 * n_scale
+
+    return total_sec
+
+
+def print_dry_run_summary(
+    methods_cfg: dict[str, Any],
+    n_jobs: int = 6,
+    results_dir: Path | str = "results",
+    force: bool = False,
+) -> None:
+    """Print complete dry-run workload and wall-clock estimates for Tier 1 and Tier 2 at n_jobs."""
+    results_path = Path(results_dir)
+    tiers = methods_cfg.get("tiers", {})
+
+    print("=" * 88)
+    print("MONTE CARLO SIMULATION DRY-RUN WORKLOAD ESTIMATOR (SPEC.md Section 8)")
+    print(f"Target Resource Allocation: n_jobs = {n_jobs}")
+    print("=" * 88)
+
+    grand_total_sec = 0.0
+
+    for tier_name in ["tier1", "tier2"]:
+        if tier_name not in tiers:
+            continue
+        tier_cfg = tiers[tier_name]
+        methods = tier_cfg.get("methods", [])
+        reps = int(tier_cfg.get("replications", 1000))
+        run_ml = bool(tier_cfg.get("run_ml_interaction_tests", False))
+        run_stab = bool(tier_cfg.get("run_stability_selection", True))
+        b_refits = int(tier_cfg.get("b_null_refits", 50))
+
+        scenarios = get_scenarios_for_tier(tier_name, methods_cfg)
+        n_scenarios = len(scenarios)
+        total_tasks = n_scenarios * reps
+
+        completed_tasks = 0
+        tier_seq_sec = 0.0
+
+        for sc in scenarios:
+            s_n = int(sc.get("n", 150))
+            sec_rep = estimate_replication_seconds(
+                methods=methods,
+                n=s_n,
+                run_ml_tests=run_ml,
+                run_stability=run_stab,
+                b_null_refits=b_refits,
+            )
+            s_path = results_path / f"{sc['name']}.parquet"
+            if not force and check_shard_completed(s_path, reps):
+                completed_tasks += reps
+            else:
+                tier_seq_sec += reps * sec_rep
+
+        pending_tasks = total_tasks - completed_tasks
+        tier_wall_sec = tier_seq_sec / max(1, n_jobs)
+        grand_total_sec += tier_wall_sec
+
+        print(f"\n[{tier_name.upper()}] - {tier_cfg.get('description', '')}")
+        print("-" * 88)
+        print(f"  Active Methods:          {', '.join(methods)}")
+        print(f"  Total Scenarios:         {n_scenarios} scenarios ({reps} reps/scenario)")
+        print(f"  Total Workload Tasks:    {total_tasks:,} replications")
+        print(f"  Already Completed:       {completed_tasks:,} replications ({n_scenarios - (pending_tasks // reps if reps else 0)} shards)")
+        print(f"  Pending Tasks to Run:    {pending_tasks:,} replications")
+        print(f"  Est. Sequential Compute: {tier_seq_sec:,.1f}s ({tier_seq_sec / 3600:.2f} core-hours)")
+        print(f"  Est. Wall-Clock (n_jobs={n_jobs}): {tier_wall_sec:,.1f}s ({tier_wall_sec / 3600:.2f} hours, or ~{tier_wall_sec / 60:.1f} mins)")
+
+    print("\n" + "=" * 88)
+    print(f"Combined Estimated Wall-Clock Time (Tier 1 + Tier 2 at n_jobs={n_jobs}): {grand_total_sec / 3600:.2f} hours")
+    print("=" * 88)
 def run_simulation(
     tier: str = "tier1",
     scenario_name: str | None = None,
@@ -379,9 +485,13 @@ def run_simulation(
     n_jobs = n_jobs_override if n_jobs_override is not None else int(exec_cfg.get("n_jobs", 4))
     master_seed = int(exec_cfg.get("master_seed", 20261013))
 
-    results_dir = Path(results_dir_override) if results_dir_override is not None else Path(exec_cfg.get("results_dir", "results"))
+    if results_dir_override is not None:
+        results_dir = Path(results_dir_override)
+        failure_log = results_dir / "failures.log"
+    else:
+        results_dir = Path(exec_cfg.get("results_dir", "results"))
+        failure_log = Path(exec_cfg.get("failure_log", results_dir / "failures.log"))
     results_dir.mkdir(parents=True, exist_ok=True)
-    failure_log = Path(exec_cfg.get("failure_log", results_dir / "failures.log"))
 
     # Tier settings
     tier_cfg = methods_cfg.get("tiers", {}).get(tier, {})
@@ -427,12 +537,21 @@ def run_simulation(
 
     # Dry-run handling
     if dry_run:
-        est_sequential_sec = pending_tasks * sec_per_rep
+        est_sequential_sec = sum(
+            reps_per_scenario * estimate_replication_seconds(
+                methods=methods,
+                n=sc.get("n", 150),
+                run_ml_tests=run_ml_tests,
+                run_stability=run_stability,
+                b_null_refits=b_null_refits,
+            )
+            for sc in pending_scenarios
+        )
         est_parallel_sec = est_sequential_sec / max(1, n_jobs)
 
-        print("=" * 80)
+        print("=" * 88)
         print("MONTE CARLO SIMULATION DRY-RUN SUMMARY (SPEC.md Section 8)")
-        print("=" * 80)
+        print("=" * 88)
         print(f"Tier:                      {tier} ({tier_cfg.get('description', '')})")
         print(f"Active Methods:            {', '.join(methods)}")
         print(f"Master Seed:               {master_seed}")
@@ -444,11 +563,11 @@ def run_simulation(
         print(f"Total Tasks:               {total_tasks:,}")
         print(f"Already Completed Shards:  {n_scenarios - len(pending_scenarios)} ({completed_tasks:,} tasks)")
         print(f"Pending Tasks to Run:      {pending_tasks:,} across {len(pending_scenarios)} scenarios")
-        print("-" * 80)
-        print(f"Timing-Pilot Benchmark:    {sec_per_rep:.2f}s per task ({tier})")
+        print("-" * 88)
         print(f"Estimated Sequential Time: {est_sequential_sec:,.1f}s ({est_sequential_sec / 3600:.2f} hours)")
         print(f"Estimated Wall-Clock Time: {est_parallel_sec:,.1f}s ({est_parallel_sec / 3600:.2f} hours at n_jobs = {n_jobs})")
-        print("=" * 80)
+        print("=" * 88)
+        print_dry_run_summary(methods_cfg, n_jobs=6, results_dir=results_dir, force=force)
         return
 
     # Real execution
@@ -479,9 +598,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Monte Carlo Simulation Runner (SPEC.md Section 8).")
     parser.add_argument("--tier", choices=["tier1", "tier2"], default="tier1", help="Execution tier (default: tier1)")
     parser.add_argument("--scenario", type=str, default=None, help="Specific scenario name to run")
-    parser.add_argument("--replications", type=int, default=None, help="Override replications per scenario")
+    parser.add_argument("--max-reps", "--replications", dest="max_reps", type=int, default=None, help="Override replications per scenario")
     parser.add_argument("--n-jobs", type=int, default=None, help="Override parallel jobs from config")
-    parser.add_argument("--results-dir", type=str, default=None, help="Override output directory")
+    parser.add_argument("--out-dir", "--results-dir", dest="out_dir", type=str, default=None, help="Override output directory")
     parser.add_argument("--dry-run", action="store_true", help="Print task count and estimated time without running")
     parser.add_argument("--force", action="store_true", help="Recompute and overwrite existing completed shards")
 
@@ -490,9 +609,9 @@ if __name__ == "__main__":
     run_simulation(
         tier=args.tier,
         scenario_name=args.scenario,
-        replications_override=args.replications,
+        replications_override=args.max_reps,
         n_jobs_override=args.n_jobs,
-        results_dir_override=args.results_dir,
+        results_dir_override=args.out_dir,
         dry_run=args.dry_run,
         force=args.force,
         verbose=True,

@@ -276,3 +276,38 @@ def test_leaky_design_demonstration():
     # False positive rate of H1 test in leaky design must be massive (near 100%)
     assert summary["fpr_leaky"] >= 0.90
     assert summary["fpr_correct"] <= 0.20
+
+
+def test_shard_measurement_columns(tmp_path: Path, fast_scenario: dict):
+    """Verify all 8 measurement checks are recorded per replication in shard output (Part B)."""
+    results_dir = tmp_path / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    n_reps = 2
+
+    df_out, _ = run_scenario(
+        scenario=fast_scenario,
+        n_replications=n_reps,
+        methods=["M0", "M1"],
+        master_seed=20261013,
+        results_dir=results_dir,
+        n_jobs=1,
+        run_stability_selection=False,
+        run_ml_interaction_tests=False,
+        force=True,
+        verbose=False,
+    )
+
+    required_meas_cols = [
+        "htmt_A_tech_B_i",
+        "htmt_A_mkt_B_ii",
+        "htmt_C_G",
+        "pa_factors_A_tech_B_i",
+        "pa_factors_A_mkt_B_ii",
+        "pa_factors_C_G",
+        "harman_first_factor_share",
+        "marker_r_M",
+    ]
+
+    for col in required_meas_cols:
+        assert col in df_out.columns, f"Missing measurement column: {col}"
+        assert not df_out[col].isna().any(), f"Measurement column {col} contains NaN values"

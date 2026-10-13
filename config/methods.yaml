@@ -84,7 +84,7 @@ m6:
   min_samples_leaf: 3
 
 execution:
-  n_jobs: 4
+  n_jobs: 6
   master_seed: 20261013
   results_dir: "results"
   failure_log: "results/failures.log"
