@@ -88,3 +88,30 @@ def test_scoring_and_index_computations(large_n_base_df):
     )
     expected_ctx = df[b_cols].mean(axis=1)
     assert np.allclose(df["index_contextual"], expected_ctx), "Contextual index mismatch"
+
+
+def test_loading_draw_modes():
+    """Test loading_draw equispaced and random options."""
+    # 1. Equispaced mode (default)
+    sc_eq = dgp.build_scenario({"loading_draw": "equispaced"})
+    loadings_eq = dgp.draw_scenario_loadings(sc_eq)
+
+    for construct in ["A_tech", "A_mkt", "B_i", "B_ii", "B_iii", "C", "G"]:
+        count = int(sc_eq["item_counts"][construct])
+        expected = np.linspace(0.55, 0.85, count)
+        assert np.allclose(loadings_eq[construct], expected), f"Equispaced mismatch for {construct}"
+
+    assert np.allclose(loadings_eq["M"], np.zeros(4))
+
+    # 2. Random mode
+    sc_rand = dgp.build_scenario({"loading_draw": "random", "loadings_seed": 12345})
+    loadings_rand = dgp.draw_scenario_loadings(sc_rand)
+
+    for construct in ["A_tech", "A_mkt", "B_i", "B_ii", "B_iii", "C", "G"]:
+        lams = loadings_rand[construct]
+        assert np.all(lams >= 0.55) and np.all(lams <= 0.85), f"Random bounds violation for {construct}"
+        # Values should not be strictly equispaced
+        count = len(lams)
+        assert not np.allclose(lams, np.linspace(0.55, 0.85, count))
+
+    assert np.allclose(loadings_rand["M"], np.zeros(4))

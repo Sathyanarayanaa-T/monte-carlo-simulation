@@ -122,11 +122,17 @@ def draw_scenario_loadings(
     lam_min = float(loadings_range["min"])
     lam_max = float(loadings_range["max"])
     item_counts = scenario["item_counts"]
+    draw_mode = str(scenario.get("loading_draw", "equispaced")).lower()
 
     loadings: dict[str, np.ndarray] = {}
     for construct in ["A_tech", "A_mkt", "B_i", "B_ii", "B_iii", "C", "G"]:
         count = int(item_counts[construct])
-        loadings[construct] = rng.uniform(lam_min, lam_max, size=count)
+        if draw_mode == "equispaced":
+            loadings[construct] = np.linspace(lam_min, lam_max, count)
+        elif draw_mode == "random":
+            loadings[construct] = rng.uniform(lam_min, lam_max, size=count)
+        else:
+            raise ValueError(f"Unknown loading_draw mode: {draw_mode}. Must be 'equispaced' or 'random'.")
 
     # Marker variable items load ONLY on the acquiescence factor, no substantive factor
     count_m = int(item_counts["M"])

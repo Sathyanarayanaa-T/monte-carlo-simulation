@@ -56,6 +56,7 @@ base_parameters:
     G: 4        # TODO: placeholder item count from SPEC.md Section 3.4; replace with real FEDRS counts
     M: 4        # TODO: placeholder item count from SPEC.md Section 3.4; replace with real FEDRS counts
 
+  loading_draw: "equispaced"  # "equispaced" (default) or "random"
   loadings_range:
     min: 0.55
     max: 0.85

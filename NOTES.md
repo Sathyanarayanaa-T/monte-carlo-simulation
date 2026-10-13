@@ -43,6 +43,26 @@ Milestone 1 implemented the complete Data-Generating Process (DGP) and validatio
 5. **Reverse-Keyed Item Keying and Selection**:
    - For 20% reverse-keyed items, rounded to the nearest integer count per construct (1 item per construct for 4, 5, and 6-item constructs).
    - In accordance with SPEC.md Section 3.4, the loading sign is flipped on generation ($\lambda_j \to -\lambda_j$), and the resulting raw response is re-coded as $6 - x_{raw}$.
+6. **Orthogonalisation Meaning of $\psi$**:
+   - When `orthogonalise_nonlinear: true` (default), the planted non-linear functional term $N_0$ is residualised against the linear latent predictors ($A_{tech}, A_{mkt}, B\text{-}i, B\text{-}ii, B\text{-}iii$) using the calibration sample.
+   - Consequently, $Cov(L_0, N_{orth}) = 0$ and the linear regression $R^2(N_{orth} \sim \text{linear predictors}) = 0.0$.
+   - Under this formulation, $\psi$ strictly represents the **pure, orthogonal non-linear incremental variance share**, so that the total explained variance partitions cleanly as $R^2_{total} = R^2_{linear} + \psi$ with zero linear contamination.
+   - Without orthogonalisation (`orthogonalise_nonlinear: false`), asymmetric or threshold non-linear terms retain non-zero linear projection ($R^2 \approx 0.177$), conflating linear and non-linear predictive capacity.
+7. **M2a as an Approximate Oracle for Threshold Form**:
+   - In SPEC.md, Model M2a specifies a bilinear interaction term $A_{tech} \times B\text{-}iii$ as the non-linear candidate.
+   - For the interaction DGP scenario ($N_0 = A_{tech} \cdot B\text{-}iii$), M2a is the exact parametric oracle.
+   - For the threshold DGP scenario ($N_0 = B\text{-}iii \cdot \mathbf{1}[A_{tech} < -0.5]$), the true underlying mechanism is a localized step/piecewise function rather than a smooth product.
+   - Therefore, M2a acts only as an **approximate oracle** (a smooth parametric proxy) for the threshold DGP, testing how well standard bilinear interaction terms capture localized threshold dynamics compared to non-parametric/tree methods (M3–M6).
+8. **Decision on `loading_draw` (Equispaced vs Random)**:
+   - Config option: `loading_draw: equispaced | random` (default: `equispaced`).
+   - For a construct with $k$ items and loading range $[\lambda_{min}, \lambda_{max}]$, `equispaced` sets $\lambda = \text{linspace}(\lambda_{min}, \lambda_{max}, k)$.
+   - *Rationale*: Uniform random sampling (`random`) with small item counts ($k=4, 5, 6$) causes stochastic clustering: in the base scenario, draws can dip below 0.75 (e.g. $B\text{-}ii$ at $\omega = 0.7117$, $C$ at $\omega = 0.7272$) or exceed 0.85 (e.g. $B\text{-}iii$ at $\omega = 0.8783$). Similarly in low-reliability, random draws dip to $\omega = 0.5135$ or rise to $0.7314$.
+   - Using `equispaced` stabilizes construct reliability across all scenarios: every substantive construct lands strictly within its specification band (base: $\omega \in [0.766, 0.831] \subset [0.75, 0.85]$; low-reliability: $\omega \in [0.573, 0.670] \subset [0.55, 0.70]$), preserving realistic within-construct loading heterogeneity while removing arbitrary seed artifacts. `random` remains fully available via config for sensitivity analysis.
+9. **Choice of Pearson Correlation on Item Scores in Measurement Layer**:
+   - In `src/measurement.py` (HTMT, Horn's parallel analysis, Lindell-Whitney adjustment, and Harman's test), item correlations are computed using standard Pearson product-moment correlations directly on numeric Likert item scores (1 to 5).
+   - *Rationale*: Standard benchmark literature for HTMT (Henseler, Ringle, & Sarstedt, 2015), parallel analysis (Horn, 1965), and common-method bias tests (Lindell & Whitney, 2001; Podsakoff et al., 2003) define these metrics on Pearson correlation matrices. Pearson correlations on 5-point Likert items are robust, computationally efficient, and avoid numerical non-convergence or indefiniteness issues associated with polychoric estimation across thousands of Monte Carlo replications.
+10. **Sequential Factor Retention Rule in Horn's Parallel Analysis**:
+    - Factors are retained sequentially up to the first component $k$ where the sample eigenvalue falls below the 95th percentile null benchmark ($\lambda_k \le \lambda^*_{crit, k}$), in accordance with Horn (1965) and psychometric standards (Hayton et al., 2004). This ensures that if the primary factor cannot be distinguished from noise ($\lambda_1 \le \lambda^*_{crit, 1}$), 0 factors are retained regardless of subsequent noise fluctuations.
 
 ---
 
