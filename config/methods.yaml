@@ -8,6 +8,14 @@ cv:
   inner_folds_small_n: 3
   small_n_threshold: 50
 
+shared_ml:
+  alpha_level: 0.05
+  b_null_refits: 100  # SPEC.md line 99: 100 null refits (can be cut to 50 if compute is high)
+  substantive_predictors: ["score_A_tech", "score_A_mkt", "score_B_i", "score_B_ii", "score_B_iii"]
+
+bootstrap_stability:
+  n_bootstraps: 50  # SPEC.md line 127: 50 bootstrap resamples for ranking stability
+
 m0:
   name: "Training-fold mean"
   description: "Baseline out-of-sample prediction benchmark"
@@ -50,3 +58,27 @@ m3:
     n_bootstraps: 100
     threshold: 0.70
   predictors: ["score_A_tech", "score_A_mkt", "score_B_i", "score_B_ii", "score_B_iii"]
+
+m4:
+  name: "Random forest"
+  n_estimators: 300
+  bootstrap: true
+  min_samples_leaf_grid: [3, 5, 10]
+  max_features_grid: [0.33, 0.5, 1.0]
+
+m5:
+  name: "Gradient boosting"
+  learning_rate: 0.03
+  subsample: 0.7
+  min_samples_leaf: 5
+  inner_grid:
+    max_depth: [1, 2, 3]
+    n_estimators: [100, 200, 400]
+
+m6:
+  name: "Explainable Boosting Machine"
+  interactions: 10
+  max_bins: 32
+  learning_rate: 0.01
+  outer_bags: 8
+  min_samples_leaf: 3

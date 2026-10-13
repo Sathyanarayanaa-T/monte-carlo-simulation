@@ -113,3 +113,41 @@ Implemented models M0 to M3, the repeated nested CV harness, and metrics A, E, B
    - Computes Metric A (inferential power & Type I error), Metric E (estimation quality, bias, 95% CI coverage, attenuation ratio), Metric B (interaction detection flags, continuous statistics, top-1 pairs), Metric D (out-of-sample prediction), and Metric H (method-bias gate and conclusion shifts).
    - `src/runner.py` provides `run_smoke(n_replications=20)` completing in ~41 seconds.
 
+---
+
+## Milestone 5 Summary: Machine Learning Models (M4 to M6), Residual Resampling, and Timing Pilot
+
+Implemented methods M4, M5, and M6, the shared residual-resampling interaction test, Metrics B (ML parts), C, and D, and the timing pilot according to SPEC.md Section 5 & 6:
+
+1. **M4 Random Forest**:
+   - 300 trees, `bootstrap=True`.
+   - Tuned by out-of-bag $R^2$ (`oob_score_`) over `min_samples_leaf` in `{3, 5, 10}`.
+   - Pairwise interaction statistics extracted via TreeSHAP interaction values ($\frac{1}{n} \sum_i |\phi_{i, j, k}|$).
+2. **M5 Gradient Boosting**:
+   - `GradientBoostingRegressor` with `learning_rate=0.03`, `subsample=0.7`, `min_samples_leaf=5`.
+   - Inner CV grid search over `max_depth` in `{1, 2, 3}` and `n_estimators` in `{100, 200, 400}`.
+   - Pairwise interaction statistics extracted via TreeSHAP interaction values.
+3. **M6 Explainable Boosting Machine (EBM)**:
+   - `ExplainableBoostingRegressor` from `interpret` with `interactions=10`, `max_bins=32`, `learning_rate=0.01`, `outer_bags=8`, `min_samples_leaf=3`.
+   - Fixed hyperparameters without inner tuning to maintain computational feasibility.
+   - Pairwise interaction statistics extracted directly from EBM term importances.
+4. **Shared Residual-Resampling Interaction Test**:
+   - Fits additive OLS model $\hat{y}_{\text{add}} = X \hat{\beta}$, residuals $e = y - \hat{y}_{\text{add}}$.
+   - Simulates $B$ null datasets as $y^* = \hat{y}_{\text{add}} + \text{permute}(e)$, refits the non-linear model, and computes null test statistics $T^* = \max_{\text{pairs}} \text{Interaction}(j, k)$.
+   - Empirical $p$-value: $p = (1 + \sum \mathbf{1}[T^* \ge T_{\text{obs}}]) / (B + 1)$.
+   - **Why residual resampling**: Permuting $y$ directly destroys main effects, causing non-linear estimators to falsely flag spurious interactions on pure additive data. Residual resampling preserves the additive signal ($R^2_{\text{null}} \approx R^2_{\text{orig}}$) while strictly removing the interaction.
+5. **Metrics B, C, D**:
+   - Metric B: Extended with M4, M5, M6 detection flags, $p$-values, test statistics $T$, and Top-1 selected interaction pairs.
+   - Metric C: Evaluates ranking accuracy against the noise-free oracle ranking via Kendall's tau, Top-1 recovery, Top-2 recovery, 50-bootstrap ranking stability, and the H3 check.
+   - Metric D: Out-of-sample $R^2_{\text{oos}}$ and $\text{RMSE}_{\text{oos}}$ across all methods, plus $\Delta R^2$ benchmarked against M3.
+6. **Timing Pilot Results (`scripts/time_pilot.py`)**:
+   - 5 replications per method at $n = 100$ and $n = 150$:
+     * M0: ~0.00003s / rep
+     * M1: ~0.006s / rep
+     * M2a: ~0.005s / rep
+     * M2b: ~0.07s / rep
+     * M3: ~0.10s / rep
+     * M4: 0.92s ($n=100$) / 1.31s ($n=150$)
+     * M5: 4.95s ($n=100$) / 4.70s ($n=150$) (due to 5-fold inner CV grid search)
+     * M6: 1.35s ($n=100$) / 0.83s ($n=150$)
+
