@@ -151,3 +151,36 @@ Implemented methods M4, M5, and M6, the shared residual-resampling interaction t
      * M5: 4.95s ($n=100$) / 4.70s ($n=150$) (due to 5-fold inner CV grid search)
      * M6: 1.35s ($n=100$) / 0.83s ($n=150$)
 
+---
+
+## Milestone 6 Summary: Simulation Runner, Tiers, Sharding, Resumption, and Leaky-Design Demonstration
+
+Implemented `src/run.py`, `src/leaky.py`, tiers in `config/methods.yaml`, and validation tests in `tests/test_run_and_leaky.py` according to SPEC.md Section 7 & 8:
+
+1. **Simulation Runner (`src/run.py`)**:
+   - Loops over scenario $\times$ replication parallelized via `joblib.Parallel(n_jobs=n_jobs)` (where `n_jobs` is read from `config/methods.yaml` or overridden via `--n-jobs`).
+   - Deterministic child seeds spawned via `np.random.SeedSequence([master_seed, scenario_idx]).spawn(n_replications)` ensuring reproducible, core-invariant execution.
+   - Parquet sharding: writes one shard per scenario to `results/{scenario}.parquet` with companion JSON sidecar `results/{scenario}_meta.json`.
+   - Embedded metadata: logs git commit hash (`git rev-parse HEAD`), ISO UTC timestamp, and pinned package versions (`numpy`, `pandas`, `scipy`, `scikit-learn`, `shap`, `interpret`, `joblib`, `pyarrow`, `matplotlib`) directly into the Parquet schema key-value table and JSON sidecar.
+   - Resumption logic: checks `pq.read_metadata()` for existing shards; if a shard has completed all expected replications, skips recomputation unless `--force` is specified.
+   - Failure logging: catches exceptions at the replication level, logs full tracebacks to `results/failures.log`, and returns a failure row (`status="FAILED"`) so single-replication numerical errors do not abort the outer batch.
+   - `--dry-run` flag: prints total task count across scenarios, checks completed shards, and computes estimated runtime from timing-pilot benchmarks.
+
+2. **Execution Tiers (`config/methods.yaml`)**:
+   - `tier1`: OLS family (`M0`, `M1`, `M2a`, `M2b`, `M3`) across all 60 scenarios ($R = 1000$, 60,000 tasks total). Estimated wall-clock runtime: ~8.5 hours at `n_jobs=4`.
+   - `tier2`: Reduced ML grid (`M0` to `M6`) across 14 key core scenarios at $n \in \{100, 150\}$ ($R = 300$, 4,200 tasks total). Estimated wall-clock runtime: ~19 hours at `n_jobs=4`.
+
+3. **Leaky-Design Demonstration (`src/leaky.py`)**:
+   - Implemented SPEC.md Section 7 comparing correct design ($C$ regressed on Contextual block, then Individual Resilience Index $A$ items only) vs leaky design ($C$ items included inside the Individual Resilience Index) under $H_1\text{-null}$ at $n = 150$.
+   - **Correct design**: Nominal Type I error ($\text{FPR} \approx 5\%$, $\text{mean } \Delta R^2 \approx 0.006$).
+   - **Leaky design**: Catastrophic false-positive rate ($\text{FPR} = 100\%$) and severe $\Delta R^2$ inflation ($\text{mean } \Delta R^2 \approx 0.181$, an inflation ratio $> 30\times$).
+
+4. **Testing Suite (`tests/test_run_and_leaky.py`)**:
+   - Resumption without recomputing finished shards verified.
+   - Invariance to `n_jobs`: byte-identical DataFrame outputs verified between `n_jobs = 1` and `n_jobs = 4`.
+   - Embedded Parquet schema metadata and JSON sidecar verified.
+   - Failure logging and exception containment verified.
+   - Dry-run flags verified.
+   - Leaky-design $\Delta R^2$ inflation and FPR verified.
+
+

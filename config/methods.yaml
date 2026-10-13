@@ -82,3 +82,43 @@ m6:
   learning_rate: 0.01
   outer_bags: 8
   min_samples_leaf: 3
+
+execution:
+  n_jobs: 4
+  master_seed: 20261013
+  results_dir: "results"
+  failure_log: "results/failures.log"
+
+tiers:
+  tier1:
+    name: "tier1"
+    description: "OLS family on all scenarios"
+    methods: ["M0", "M1", "M2a", "M2b", "M3"]
+    replications: 1000
+    scenarios: "all"
+    run_ml_interaction_tests: false
+    run_stability_selection: true
+  tier2:
+    name: "tier2"
+    description: "Reduced ML grid"
+    methods: ["M0", "M1", "M2a", "M2b", "M3", "M4", "M5", "M6"]
+    replications: 300
+    scenarios: "reduced_ml"
+    run_ml_interaction_tests: true
+    b_null_refits: 50
+    run_stability_selection: true
+
+timing_pilot:
+  seconds_per_rep:
+    tier1: 2.05
+    tier2: 65.0
+  methods_single_fit_seconds:
+    M0: 0.00003
+    M1: 0.006
+    M2a: 0.005
+    M2b: 0.070
+    M3: 0.100
+    M4: 1.115
+    M5: 4.825
+    M6: 1.090
+

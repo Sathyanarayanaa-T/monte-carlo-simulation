@@ -69,6 +69,12 @@ def build_scenario(
 
     if scenario_override is None:
         scenario = base_params
+    elif isinstance(scenario_override, str):
+        catalog = get_scenario_catalog(config_path)
+        if scenario_override in catalog:
+            return copy.deepcopy(catalog[scenario_override])
+        scenario = copy.deepcopy(base_params)
+        scenario["name"] = scenario_override
     else:
         scenario = copy.deepcopy(base_params)
         _deep_update(scenario, scenario_override)
@@ -84,6 +90,102 @@ def build_scenario(
     return scenario
 
 
+def get_scenario_catalog(config_path: str | Path = "config/scenarios.yaml") -> dict[str, dict[str, Any]]:
+    """Build the catalog of all 60 scenarios from SPEC.md Section 4.
+
+    Returns:
+    - dict[scenario_name, scenario_dict]
+
+    Core grid: 28 scenarios (4 sample sizes x (5 non-linearity cells + 2 nulls)).
+    Sensitivity grid: 32 scenarios (2 sample sizes x 2 non-linearity cells x 8 sensitivity factors).
+    """
+    catalog: dict[str, dict[str, Any]] = {}
+    scenario_idx = 0
+
+    # 1. Core grid (28 scenarios)
+    sample_sizes = [50, 100, 150, 300]
+    nl_cells = {
+        "none": {"non_linear_form": "none", "psi": 0.0},
+        "inter_small": {"non_linear_form": "interaction", "psi": 0.03},
+        "inter_med": {"non_linear_form": "interaction", "psi": 0.08},
+        "thresh_small": {"non_linear_form": "threshold", "psi": 0.03},
+        "thresh_med": {"non_linear_form": "threshold", "psi": 0.08},
+    }
+
+    h1_null_weights = {"A_tech": 0.0, "A_mkt": 0.0, "B_i": 0.20, "B_ii": 0.10, "B_iii": 0.15}
+    h2_null_weights = {"A_tech": 0.30, "A_mkt": 0.15, "B_i": 0.15, "B_ii": 0.15, "B_iii": 0.15}
+
+    for n in sample_sizes:
+        for cell_name, cell_overrides in nl_cells.items():
+            sc_name = f"base_n{n}_{cell_name}"
+            overrides = {"name": sc_name, "scenario_idx": scenario_idx, "n": n, **cell_overrides}
+            catalog[sc_name] = build_scenario(overrides, config_path=config_path)
+            scenario_idx += 1
+
+        # H1-null
+        sc_name = f"h1_null_n{n}"
+        overrides = {
+            "name": sc_name,
+            "scenario_idx": scenario_idx,
+            "n": n,
+            "linear_weights": h1_null_weights,
+            "non_linear_form": "none",
+            "psi": 0.0,
+        }
+        catalog[sc_name] = build_scenario(overrides, config_path=config_path)
+        scenario_idx += 1
+
+        # H2-null
+        sc_name = f"h2_null_n{n}"
+        overrides = {
+            "name": sc_name,
+            "scenario_idx": scenario_idx,
+            "n": n,
+            "linear_weights": h2_null_weights,
+            "non_linear_form": "none",
+            "psi": 0.0,
+        }
+        catalog[sc_name] = build_scenario(overrides, config_path=config_path)
+        scenario_idx += 1
+
+    # 2. Sensitivity grid (32 scenarios)
+    sens_sample_sizes = [100, 150]
+    sens_nl_cells = {
+        "none": {"non_linear_form": "none", "psi": 0.0},
+        "inter_med": {"non_linear_form": "interaction", "psi": 0.08},
+    }
+    sens_factors = {
+        "corr_high": {"latent_correlations": {"B_i_B_ii": 0.50, "B_i_B_iii": 0.50, "B_ii_B_iii": 0.50}},
+        "corr_low": {"latent_correlations": {"B_i_B_ii": 0.10, "B_i_B_iii": 0.10, "B_ii_B_iii": 0.10}},
+        "low_reliability": {"loadings_range": {"min": 0.40, "max": 0.65}},
+        "r2_low": {"r2_target": 0.20},
+        "acquiescence": {"acquiescence_gamma": 0.30},
+        "ceiling_shift": {"ceiling_shift": 0.60},
+        "cross_loading": {"cross_loading": 0.30},
+        "contaminated": {"kappa": 0.40},
+    }
+
+    for factor_name, factor_overrides in sens_factors.items():
+        for n in sens_sample_sizes:
+            for nl_name, nl_overrides in sens_nl_cells.items():
+                sc_name = f"sens_{factor_name}_n{n}_{nl_name}"
+                overrides = {
+                    "name": sc_name,
+                    "scenario_idx": scenario_idx,
+                    "n": n,
+                    **factor_overrides,
+                    **nl_overrides,
+                }
+                catalog[sc_name] = build_scenario(overrides, config_path=config_path)
+                scenario_idx += 1
+
+    # Convenient aliases
+    catalog["base"] = catalog["base_n150_none"]
+    catalog["base_scenario"] = catalog["base_n150_none"]
+
+    return catalog
+
+
 def _deep_update(base: dict[str, Any], override: dict[str, Any]) -> None:
     """Recursively update a dictionary."""
     for key, value in override.items():
@@ -91,6 +193,7 @@ def _deep_update(base: dict[str, Any], override: dict[str, Any]) -> None:
             _deep_update(base[key], value)
         else:
             base[key] = copy.deepcopy(value)
+
 
 
 # =============================================================================
