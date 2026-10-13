@@ -1,5 +1,6 @@
 <!-- Change Log: Updated Section 3.3 (psi pure non-linear share after residualising; loadings equispaced by default), Section 3.4 (ceiling-shift in scored direction), Section 4 (Tier 2 14-scenario grid), Section 10 (structural-validity gate evaluated at n=100 and n=150). -->
 <!-- Milestone 6.7: Added sens_cross_loading_0p5_n{100,150}_{none,inter_med} sensitivity scenarios (cross_loading 0.50); Tier 1 expanded from 60 to 64 scenarios (Tier 2 unchanged at 14). -->
+<!-- Milestone 6.8: Updated Section 3.4 for symmetric cross-loading pairs [[B-i, A-i], [B-ii, A-ii]]; added sens_high_latent_corr_n{100,150}_{none,inter_med} (Tier 1 68 scenarios). -->
 Monte Carlo Simulation Plan: Validating the FEDRS Analysis Pipeline
 Prepared for Sathyanarayanaa T | Draft v2 (reviewer-criticism revision) | 13 October 2026
 1. Purpose and scope
@@ -56,7 +57,7 @@ Do not simulate the sub-construct scores directly. Simulate items, then score th
 •	Scoring: sub-construct score = mean of its items after reverse-scoring. Individual Resilience Index = mean of A-i and A-ii items. Contextual Exposure Index = mean of Part B items.
 •	General startup intent G (control, added after review): 4 items, loadings Uniform(0.55, 0.85), same discretisation.
 •	Marker variable M (added after review): 4 items that load only on the acquiescence factor a_i (same weight as the other items) plus noise, with no substantive loading. The marker is only informative when γ > 0.
-•	Cross-loading (sensitivity, added after review): each B-i item also loads 0.3 on the A-i latent, mimicking technical exposure reported through technical confidence. Base value 0.
+•	Cross-loading (sensitivity, added after review): symmetric cross-loading specified via config pairs [[B-i, A-i], [B-ii, A-ii]]. Each B-i item also loads on the A-i (A_tech) latent, and each B-ii item also loads on the A-ii (A_mkt) latent, mimicking domain exposure reported through confidence. Base value 0, sensitivity values 0.3 and 0.5.
 •	Contaminated outcome (sensitivity, added after review): κ = 0.4, as in Section 3.3.
 3.5 Covariates
 •	Semester (6, 7, 8) as a categorical variable with no true effect on C.

@@ -54,3 +54,28 @@ def test_oracle_importance_purely_linear():
     assert np.isclose(ratio_imp, ratio_w_sq, rtol=0.10), (
         f"Importance ratio {ratio_imp:.2f} should be close to weight-squared ratio {ratio_w_sq:.2f}"
     )
+
+
+def test_top_k_recovery_relative_gap_h2_null():
+    """Verify D13 relative-gap rule (v_k - v_{k+1}) / v_k >= 0.10 on h2_null scenario."""
+    import src.dgp as dgp
+
+    catalog = dgp.get_scenario_catalog()
+    sc = catalog["h2_null_n100"]
+
+    # Compute oracle importance
+    imps = oracle_importance(sc, n_pop=50_000, seed=42, n_repeats=2)
+    sorted_imps = sorted(imps.values(), reverse=True)
+
+    v1, v2, v3 = sorted_imps[0], sorted_imps[1], sorted_imps[2]
+
+    # In h2_null, A_tech weight = 0.30, while A_mkt, B_i, B_ii, B_iii weights = 0.15.
+    # Top-1 is well-separated: (v1 - v2) / v1 >= 0.10
+    rel_gap_1 = (v1 - v2) / v1
+    top1_defined = bool(v1 > 0 and rel_gap_1 >= 0.10)
+    assert top1_defined is True, f"Expected top1 to be defined, got rel_gap={rel_gap_1:.4f}"
+
+    # Top-2 is tied at 0.15: (v2 - v3) / v2 < 0.10, so top-2 is undefined
+    rel_gap_2 = (v2 - v3) / v2
+    top2_defined = bool(v2 > 0 and rel_gap_2 >= 0.10)
+    assert top2_defined is False, f"Expected top2 to be undefined (tied), got rel_gap={rel_gap_2:.4f}"

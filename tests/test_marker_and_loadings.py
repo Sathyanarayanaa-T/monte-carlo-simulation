@@ -115,3 +115,39 @@ def test_loading_draw_modes():
         assert not np.allclose(lams, np.linspace(0.55, 0.85, count))
 
     assert np.allclose(loadings_rand["M"], np.zeros(4))
+
+
+def test_explicit_cross_loading_pairs():
+    """Verify that only the listed B constructs receive extra cross-loadings (Milestone 6.8 Part C)."""
+    # 1. Base scenario with cross_loading = 0.0
+    sc_base = dgp.build_scenario({"n": 50_000, "cross_loading": 0.0})
+    df_base = dgp.generate(sc_base, seed=42)
+
+    # 2. Sensitivity scenario with cross_loading = 0.50 and explicit pairs
+    sc_cross = dgp.build_scenario({
+        "n": 50_000,
+        "cross_loading": 0.50,
+        "cross_loading_pairs": [["B_i", "A_tech"], ["B_ii", "A_mkt"]],
+    })
+    df_cross = dgp.generate(sc_cross, seed=42)
+
+    # In df_cross: B_i item 1 (non-reversed) has extra positive loading on A_tech
+    corr_bi_atech_base = np.corrcoef(df_base["B_i_1"], df_base["latent_A_tech"])[0, 1]
+    corr_bi_atech_cross = np.corrcoef(df_cross["B_i_1"], df_cross["latent_A_tech"])[0, 1]
+    assert corr_bi_atech_cross > corr_bi_atech_base + 0.15, (
+        f"B_i should have elevated correlation with A_tech: {corr_bi_atech_cross:.3f} vs {corr_bi_atech_base:.3f}"
+    )
+
+    # In df_cross: B_ii item 1 (non-reversed) has extra positive loading on A_mkt
+    corr_bii_amkt_base = np.corrcoef(df_base["B_ii_1"], df_base["latent_A_mkt"])[0, 1]
+    corr_bii_amkt_cross = np.corrcoef(df_cross["B_ii_1"], df_cross["latent_A_mkt"])[0, 1]
+    assert corr_bii_amkt_cross > corr_bii_amkt_cross + 0.15 or corr_bii_amkt_cross > corr_bii_amkt_base + 0.15, (
+        f"B_ii should have elevated correlation with A_mkt: {corr_bii_amkt_cross:.3f} vs {corr_bii_amkt_base:.3f}"
+    )
+
+    # B_iii is NOT in cross_loading_pairs, so its correlation with A_tech and A_mkt is unaffected
+    corr_biii_atech_base = np.corrcoef(df_base["B_iii_1"], df_base["latent_A_tech"])[0, 1]
+    corr_biii_atech_cross = np.corrcoef(df_cross["B_iii_1"], df_cross["latent_A_tech"])[0, 1]
+    assert np.isclose(corr_biii_atech_base, corr_biii_atech_cross, atol=0.03), (
+        f"B_iii should not receive extra cross-loading: {corr_biii_atech_cross:.3f} vs {corr_biii_atech_base:.3f}"
+    )

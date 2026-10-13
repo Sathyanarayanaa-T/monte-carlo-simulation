@@ -38,20 +38,27 @@ def compute_rate_and_mcse(series: pd.Series) -> tuple[float, float]:
     return p, mcse
 
 
-def generate_sanity_report(results_dir: Path | str = "results") -> None:
+def generate_sanity_report(results_dir: Path | str = "results", group: str = "all") -> None:
     results_path = Path(results_dir)
     if not results_path.exists():
         print(f"Results directory '{results_path}' does not exist.")
         return
 
-    shard_files = sorted(list(results_path.glob("*.parquet")))
-    if not shard_files:
+    all_shards = sorted(list(results_path.glob("*.parquet")))
+    if not all_shards:
         print(f"No parquet shards found in '{results_path}'.")
         return
 
+    if group == "core":
+        shard_files = [f for f in all_shards if f.stem.startswith("base_n") or f.stem.startswith("h1_null") or f.stem.startswith("h2_null")]
+    elif group == "sens":
+        shard_files = [f for f in all_shards if not (f.stem.startswith("base_n") or f.stem.startswith("h1_null") or f.stem.startswith("h2_null"))]
+    else:
+        shard_files = all_shards
+
     print("=" * 105)
-    print(f"MONTE CARLO SIMULATION SANITY REPORT: {results_path}")
-    print(f"Total Shards Found: {len(shard_files)}")
+    print(f"MONTE CARLO SIMULATION SANITY REPORT: {results_path} (Group: {group})")
+    print(f"Total Shards Matching Group: {len(shard_files)}")
     print("=" * 105)
 
     summary_rows = []
@@ -243,5 +250,6 @@ def generate_sanity_report(results_dir: Path | str = "results") -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Monte Carlo Simulation Sanity Reporter.")
     parser.add_argument("--results-dir", type=str, default="results", help="Directory containing shard parquet files (default: results)")
+    parser.add_argument("--group", choices=["core", "sens", "all"], default="all", help="Scenario group filter: core, sens, or all (default: all)")
     args = parser.parse_args()
-    generate_sanity_report(results_dir=args.results_dir)
+    generate_sanity_report(results_dir=args.results_dir, group=args.group)

@@ -106,8 +106,9 @@ def load_methods_config(config_path: str | Path = "config/methods.yaml") -> dict
 def get_scenarios_for_tier(
     tier_name: str,
     methods_cfg: dict[str, Any] | None = None,
+    group: str = "all",
 ) -> list[dict[str, Any]]:
-    """Resolve scenario list for a given tier."""
+    """Resolve scenario list for a given tier and group."""
     if methods_cfg is None:
         methods_cfg = load_methods_config()
 
@@ -122,9 +123,9 @@ def get_scenarios_for_tier(
     ]
 
     if scenarios_rule == "all":
-        return valid_scenarios
+        base_list = valid_scenarios
     elif scenarios_rule == "core":
-        return [
+        base_list = [
             sc for sc in valid_scenarios
             if sc["name"].startswith("base_n") or sc["name"].startswith("h1_null") or sc["name"].startswith("h2_null")
         ]
@@ -139,11 +140,25 @@ def get_scenarios_for_tier(
         for n in [50, 300]:
             for cell in ["none", "inter_med"]:
                 target_names.add(f"base_n{n}_{cell}")
-        return [sc for sc in valid_scenarios if sc["name"] in target_names]
+        base_list = [sc for sc in valid_scenarios if sc["name"] in target_names]
     elif isinstance(scenarios_rule, list):
-        return [catalog[k] if k in catalog else build_scenario(k) for k in scenarios_rule]
+        base_list = [catalog[k] if k in catalog else build_scenario(k) for k in scenarios_rule]
     else:
-        return valid_scenarios
+        base_list = valid_scenarios
+
+    # Filter by group (Milestone 6.8 Part D.2)
+    if group == "core":
+        return [
+            sc for sc in base_list
+            if sc["name"].startswith("base_n") or sc["name"].startswith("h1_null") or sc["name"].startswith("h2_null")
+        ]
+    elif group == "sens":
+        return [
+            sc for sc in base_list
+            if not (sc["name"].startswith("base_n") or sc["name"].startswith("h1_null") or sc["name"].startswith("h2_null"))
+        ]
+    else:
+        return base_list
 
 
 def check_shard_completed(shard_path: Path, expected_reps: int) -> bool:
@@ -443,6 +458,7 @@ def print_dry_run_summary(
     n_jobs: int = 6,
     results_dir: Path | str = "results",
     force: bool = False,
+    group: str = "all",
 ) -> None:
     """Print complete dry-run workload and wall-clock estimates for Tier 1 and Tier 2 at n_jobs."""
     results_path = Path(results_dir)
@@ -455,6 +471,7 @@ def print_dry_run_summary(
     print("MONTE CARLO SIMULATION DRY-RUN WORKLOAD ESTIMATOR (SPEC.md Section 8)")
     print(f"Estimation Mode:            {mode_label}")
     print(f"Target Resource Allocation: n_jobs = {n_jobs}")
+    print(f"Scenario Group Filter:      {group}")
     print("=" * 88)
 
     grand_total_sec = 0.0
@@ -469,7 +486,7 @@ def print_dry_run_summary(
         run_stab = bool(tier_cfg.get("run_stability_selection", True))
         b_refits = int(tier_cfg.get("b_null_refits", 50))
 
-        scenarios = get_scenarios_for_tier(tier_name, methods_cfg)
+        scenarios = get_scenarios_for_tier(tier_name, methods_cfg, group=group)
         n_scenarios = len(scenarios)
         total_tasks = n_scenarios * reps
 
@@ -516,16 +533,16 @@ def print_dry_run_summary(
             t2_sec_task = 65.0
             t2_source = "MODEL ESTIMATE"
     else:
-        t2_scenarios = get_scenarios_for_tier("tier2", methods_cfg)
+        t2_scenarios = get_scenarios_for_tier("tier2", methods_cfg, group=group)
         t2_cfg = methods_cfg.get("tiers", {}).get("tier2", {})
         t2_methods = t2_cfg.get("methods", ["M0", "M1", "M2a", "M2b", "M3", "M4", "M5", "M6"])
         t2_sec_task = float(np.mean([
             estimate_replication_seconds(t2_methods, sc.get("n", 150), run_ml_tests=True, run_stability=True, b_null_refits=50)
             for sc in t2_scenarios
-        ]))
+        ])) if t2_scenarios else 65.0
         t2_source = "MODEL ESTIMATE (uncalibrated; run scripts/time_e2e.sh to measure)"
 
-    t2_n_scenarios = 14
+    t2_n_scenarios = len(t2_scenarios)
     print(f"\n[TIER 2 PROJECTION: {t2_n_scenarios} SCENARIOS, n_jobs = {n_jobs}]")
     print("-" * 88)
     print(f"  Benchmark Basis:         {t2_source} ({t2_sec_task:.2f}s per task)")
@@ -544,6 +561,7 @@ def run_simulation(
     replications_override: int | None = None,
     n_jobs_override: int | None = None,
     results_dir_override: str | Path | None = None,
+    group: str = "all",
     dry_run: bool = False,
     force: bool = False,
     verbose: bool = True,
@@ -582,7 +600,7 @@ def run_simulation(
         else:
             scenarios = [build_scenario({"name": scenario_name})]
     else:
-        scenarios = get_scenarios_for_tier(tier, methods_cfg)
+        scenarios = get_scenarios_for_tier(tier, methods_cfg, group=group)
 
     # Timing pilot estimates
     timing_pilot_cfg = methods_cfg.get("timing_pilot", {})
@@ -641,12 +659,12 @@ def run_simulation(
         print(f"Estimated Sequential Time: {est_sequential_sec:,.1f}s ({est_sequential_sec / 3600:.2f} hours)")
         print(f"Estimated Wall-Clock Time: {est_parallel_sec:,.1f}s ({est_parallel_sec / 3600:.2f} hours at n_jobs = {n_jobs})")
         print("=" * 88)
-        print_dry_run_summary(methods_cfg, n_jobs=6, results_dir=results_dir, force=force)
+        print_dry_run_summary(methods_cfg, n_jobs=6, results_dir=results_dir, force=force, group=group)
         return
 
     # Real execution
     if verbose:
-        print(f"=== Starting Run: Tier '{tier}', {len(pending_scenarios)} pending scenarios, {reps_per_scenario} reps/scen, n_jobs = {n_jobs} ===")
+        print(f"=== Starting Run: Tier '{tier}', Group '{group}', {len(pending_scenarios)} pending scenarios, {reps_per_scenario} reps/scen, n_jobs = {n_jobs} ===")
 
     for sc in pending_scenarios:
         run_scenario(
@@ -665,12 +683,13 @@ def run_simulation(
         )
 
     if verbose:
-        print(f"=== Run Complete for Tier '{tier}' ===")
+        print(f"=== Run Complete for Tier '{tier}' (Group '{group}') ===")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Monte Carlo Simulation Runner (SPEC.md Section 8).")
     parser.add_argument("--tier", choices=["tier1", "tier2"], default="tier1", help="Execution tier (default: tier1)")
+    parser.add_argument("--group", choices=["core", "sens", "all"], default="all", help="Scenario group filter: core (28 core grid scenarios), sens (sensitivity scenarios), or all (default: all)")
     parser.add_argument("--scenario", type=str, default=None, help="Specific scenario name to run")
     parser.add_argument("--max-reps", "--replications", dest="max_reps", type=int, default=None, help="Override replications per scenario")
     parser.add_argument("--n-jobs", type=int, default=None, help="Override parallel jobs from config")
@@ -686,6 +705,7 @@ if __name__ == "__main__":
         replications_override=args.max_reps,
         n_jobs_override=args.n_jobs,
         results_dir_override=args.out_dir,
+        group=args.group,
         dry_run=args.dry_run,
         force=args.force,
         verbose=True,

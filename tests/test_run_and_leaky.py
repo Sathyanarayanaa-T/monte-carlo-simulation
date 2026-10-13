@@ -247,14 +247,20 @@ def test_dry_run_flag(capsys):
     )
     captured = capsys.readouterr().out
     assert "MONTE CARLO SIMULATION DRY-RUN SUMMARY" in captured
-    assert "Pending Tasks to Run:      64,000 across 64 scenarios" in captured
+    assert "Pending Tasks to Run:      68,000 across 68 scenarios" in captured
     assert "Estimated Wall-Clock Time:" in captured
 
 
 def test_tier_resolution():
     """Verify tier scenario resolutions match specification."""
     tier1_scenarios = get_scenarios_for_tier("tier1")
-    assert len(tier1_scenarios) == 64
+    assert len(tier1_scenarios) == 68
+
+    tier1_core = get_scenarios_for_tier("tier1", group="core")
+    assert len(tier1_core) == 28
+
+    tier1_sens = get_scenarios_for_tier("tier1", group="sens")
+    assert len(tier1_sens) == 40
 
     tier2_scenarios = get_scenarios_for_tier("tier2")
     assert len(tier2_scenarios) == 14  # 14 key core scenarios at n in {100, 150}

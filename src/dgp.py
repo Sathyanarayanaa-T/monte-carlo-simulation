@@ -164,6 +164,13 @@ def get_scenario_catalog(config_path: str | Path = "config/scenarios.yaml") -> d
         "cross_loading": {"cross_loading": 0.30},
         "cross_loading_0p5": {"cross_loading": 0.50},
         "contaminated": {"kappa": 0.40},
+        "high_latent_corr": {
+            "individual_factors": {
+                "A_tech": {"weight_B_i": 0.60, "weight_B_iii": 0.15},
+                "A_mkt": {"weight_B_ii": 0.60, "weight_B_iii": 0.15},
+                "residual_correlation": 0.30,
+            }
+        },
     }
 
     for factor_name, factor_overrides in sens_factors.items():
@@ -656,6 +663,9 @@ def generate(
     item_columns: dict[str, np.ndarray] = {}
     scored_items_by_construct: dict[str, list[str]] = {k: [] for k in construct_latents}
 
+    cross_pairs = scenario_dict.get("cross_loading_pairs", [["B_i", "A_tech"], ["B_ii", "A_mkt"]])
+    cross_map = {p[0]: p[1] for p in cross_pairs}
+
     for construct, theta in construct_latents.items():
         lam = loadings[construct]
         n_items = len(lam)
@@ -668,11 +678,12 @@ def generate(
             # Effective substantive loading: sign flipped if reverse-keyed
             eff_lam_j = -lam_j if is_rev else lam_j
 
-            # Substantive signal
-            if construct == "B_i" and cross_loading > 0.0:
-                # B-i cross-loads on A_tech
+            # Substantive signal: cross-load onto paired latent if configured
+            if construct in cross_map and cross_loading > 0.0:
+                target_latent_name = cross_map[construct]
+                target_latent = construct_latents[target_latent_name]
                 eff_cross = -cross_loading if is_rev else cross_loading
-                subst_signal = eff_lam_j * theta + eff_cross * A_tech
+                subst_signal = eff_lam_j * theta + eff_cross * target_latent
             else:
                 subst_signal = eff_lam_j * theta
 

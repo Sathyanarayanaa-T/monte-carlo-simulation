@@ -78,8 +78,11 @@ base_parameters:
   discretisation_cut_points: [-1.5, -0.5, 0.5, 1.5]
   reverse_score_max: 6     # 6 - x
 
-  # Cross-loading sensitivity: each B-i item also loads on A_tech
-  cross_loading: 0.0       # base value 0.0, sensitivity 0.30
+  # Cross-loading sensitivity: each listed B construct also loads on its paired A latent
+  cross_loading: 0.0       # base value 0.0, sensitivity 0.30 or 0.50
+  cross_loading_pairs:
+    - ["B_i", "A_tech"]
+    - ["B_ii", "A_mkt"]
 
   # Contaminated outcome sensitivity: each C item loads on sqrt(1 - kappa^2)*C + kappa*G
   kappa: 0.0               # base value 0.0, sensitivity 0.40
