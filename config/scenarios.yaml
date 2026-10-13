@@ -74,6 +74,7 @@ base_parameters:
 
   acquiescence_gamma: 0.0  # base gamma = 0, sensitivity gamma = 0.3
   ceiling_shift: 0.30      # base shift = +0.3, sensitivity shift = +0.6
+  ceiling_shift_direction: "scored"  # "scored" (default) or "raw": in scored mode, shifts toward category 5 post-scoring
   discretisation_cut_points: [-1.5, -0.5, 0.5, 1.5]
   reverse_score_max: 6     # 6 - x
 

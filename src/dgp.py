@@ -691,7 +691,15 @@ def generate(
 
             # Discretise with ceiling shift: cut at [-1.5, -0.5, 0.5, 1.5]
             # Resulting in categories 1, 2, 3, 4, 5
-            raw_category = np.digitize(x_star_std + shift, cut_points) + 1
+            # In "scored" mode, the shift pushes every item toward the high end of its scored scale:
+            # for reverse-keyed items, subtract shift from raw propensity so category 5 is elevated post-scoring.
+            shift_dir = str(scenario_dict.get("ceiling_shift_direction", "scored")).lower()
+            if shift_dir == "scored" and is_rev:
+                item_shift = -shift
+            else:
+                item_shift = shift
+
+            raw_category = np.digitize(x_star_std + item_shift, cut_points) + 1
 
             # Reverse-score: re-coded as (6 - x) if reverse-keyed
             if is_rev:

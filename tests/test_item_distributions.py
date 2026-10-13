@@ -41,17 +41,14 @@ def test_item_categories_no_empty_categories(large_n_base_df):
             assert p_k > 0.01, f"Category {k} proportion too low for {col}: {p_k:.4f}"
 
         # Check modest ceiling effect:
-        # For normally-keyed items, category 5 is elevated (~11.5%).
-        # For reverse-keyed items (re-coded as 6 - x), category 1 is elevated (~11.5%).
+        # In scored mode (default), category 5 is elevated (~11.5%) for EVERY item.
+        # In raw mode, category 5 is elevated for normally-keyed, and category 1 for reverse-keyed.
         prefix, num_str = col.rsplit("_", 1)
         item_idx = int(num_str) - 1
         is_reversed = item_idx in rev_indices_cfg.get(prefix, [])
 
-        if is_reversed:
-            p_high = np.mean(vals == 1)  # was raw category 5
-        else:
-            p_high = np.mean(vals == 5)  # raw category 5
-
+        # In scored mode, category 5 is the elevated pole for all items
+        p_high = np.mean(vals == 5)
         assert 0.05 <= p_high <= 0.25, f"Ceiling proportion outside plausible range for {col}: {p_high:.4f}"
 
 
@@ -71,3 +68,15 @@ def test_ceiling_shift_sensitivity():
 
     assert high_p5 > base_p5, f"High shift ceiling ({high_p5:.3f}) not greater than base ({base_p5:.3f})"
     assert high_p5 >= 0.15, f"High shift ceiling proportion {high_p5:.3f} expected >= 15%"
+
+
+def test_raw_ceiling_shift_mode():
+    """Verify raw ceiling-shift mode elevates category 1 for reverse-keyed items."""
+    sc_raw = dgp.build_scenario({"n": 50_000, "ceiling_shift_direction": "raw", "ceiling_shift": 0.30})
+    df_raw = dgp.generate(sc_raw, seed=42)
+
+    # A_tech_5 is reverse-keyed (index 4)
+    p1 = np.mean(df_raw["A_tech_5"] == 1)
+    p5 = np.mean(df_raw["A_tech_5"] == 5)
+    assert p1 > p5, f"In raw mode, reverse-keyed item should have elevated category 1: p1={p1:.3f}, p5={p5:.3f}"
+    assert 0.05 <= p1 <= 0.25, f"p1 out of band: {p1:.3f}"

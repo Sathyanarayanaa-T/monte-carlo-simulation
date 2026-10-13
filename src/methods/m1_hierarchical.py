@@ -241,7 +241,8 @@ def fit_m1_marker_adjusted(
     cols2 = list(X_block2.columns)
     idx_a = cols2.index("score_A_tech") if "score_A_tech" in cols2 else None
     a_coef = float(beta2[idx_a]) if idx_a is not None else 0.0
-    se_a = np.sqrt((1.0 - r2_2) / df_denom * np.linalg.inv(R_xx_2)[idx_a, idx_a]) if idx_a is not None else 1.0
+    var_a = (1.0 - r2_2) / df_denom * np.linalg.inv(R_xx_2)[idx_a, idx_a] if idx_a is not None else 1.0
+    se_a = float(np.sqrt(max(1e-12, var_a))) if idx_a is not None else 1.0
     t_a = a_coef / se_a if se_a > 0 else 0.0
     p_a = float(2.0 * (1.0 - stats.t.cdf(abs(t_a), df_denom)))
 
