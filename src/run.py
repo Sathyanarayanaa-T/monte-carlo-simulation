@@ -152,7 +152,11 @@ def check_shard_completed(shard_path: Path, expected_reps: int) -> bool:
         return False
     try:
         meta = pq.read_metadata(shard_path)
-        return meta.num_rows >= expected_reps
+        if meta.num_rows < expected_reps:
+            return False
+        df_reps = pd.read_parquet(shard_path, columns=["replication"])
+        present_reps = set(df_reps["replication"].tolist())
+        return all(r in present_reps for r in range(expected_reps))
     except Exception:
         return False
 
@@ -170,6 +174,7 @@ def run_single_replication(
 ) -> dict[str, Any]:
     """Execute one replication with exception catching and failure logging."""
     sc_name = scenario.get("name", "unnamed")
+    rep_t0 = time.perf_counter()
     try:
         # Generate synthetic data
         df = generate(scenario, seed=child_seed)
@@ -188,6 +193,9 @@ def run_single_replication(
 
         # Compute metrics
         row = compute_replication_metrics(cv_out, scenario, data=df)
+        elapsed_rep = float(time.perf_counter() - rep_t0)
+        row["t_total"] = elapsed_rep
+        row["runtime_seconds"] = elapsed_rep
         row["replication"] = rep
         row["scenario"] = sc_name
         row["status"] = "SUCCESS"
@@ -270,11 +278,12 @@ def save_scenario_shard(
     # Write parquet shard
     pq.write_table(table, shard_path)
 
-    # Write sidecar JSON metadata
+    # Write sidecar JSON metadata (Milestone 6.7 Part D: replication_ids)
     meta_path = shard_path.with_name(f"{shard_path.stem}_meta.json")
     meta_payload = {
         "scenario": clean_scenario,
         "num_replications": len(df),
+        "replication_ids": sorted(int(x) for x in df["replication"].tolist()) if "replication" in df.columns else [],
         "status_counts": df["status"].value_counts().to_dict() if "status" in df.columns else {},
         "environment": env_metadata,
     }
@@ -295,8 +304,13 @@ def run_scenario(
     failure_log_path: Path | None = None,
     force: bool = False,
     verbose: bool = True,
+    chunk_size: int = 25,
 ) -> tuple[pd.DataFrame, bool]:
-    """Execute all replications for one scenario and save shard.
+    """Execute all replications for one scenario and save shard in chunks of 25 replications.
+
+    Milestone 6.7 Part D: Replication-level resume.
+    Writes rows to the shard in chunks of 25 replications. On re-run with larger --reps,
+    computes only the missing replication IDs and appends, keeping seeds consistent.
 
     Returns:
     - (results_df, was_computed)
@@ -304,11 +318,22 @@ def run_scenario(
     sc_name = scenario.get("name", "unnamed")
     shard_path = results_dir / f"{sc_name}.parquet"
 
-    # Check resumption
-    if not force and check_shard_completed(shard_path, n_replications):
+    existing_df = None
+    completed_reps = set()
+    if not force and shard_path.exists():
+        try:
+            existing_df = pd.read_parquet(shard_path)
+            if "replication" in existing_df.columns:
+                completed_reps = set(existing_df["replication"].tolist())
+        except Exception:
+            existing_df = None
+            completed_reps = set()
+
+    missing_reps = [r for r in range(n_replications) if r not in completed_reps]
+
+    if len(missing_reps) == 0 and existing_df is not None:
         if verbose:
-            print(f"[RESUME] Scenario '{sc_name}' already complete. Skipping.")
-        existing_df = pd.read_parquet(shard_path)
+            print(f"[RESUME] Scenario '{sc_name}' already complete ({len(existing_df)} reps). Skipping.")
         return existing_df, False
 
     env_metadata = get_environment_metadata()
@@ -317,52 +342,63 @@ def run_scenario(
     # Child seeds via SeedSequence.spawn (Rule 8)
     sc_idx = int(scenario.get("scenario_idx", 0))
     scenario_seq = np.random.SeedSequence([master_seed, sc_idx])
-    child_seeds = scenario_seq.spawn(n_replications)
+    max_needed = max(n_replications, max(completed_reps, default=-1) + 1)
+    child_seeds = scenario_seq.spawn(max_needed)
 
     t0 = time.time()
     if verbose:
-        print(f"[RUN] Starting scenario '{sc_name}': {n_replications} reps (n_jobs = {n_jobs})...")
+        print(f"[RUN] Starting scenario '{sc_name}': {len(missing_reps)} missing reps of {n_replications} total (n_jobs = {n_jobs}, chunk_size = {chunk_size})...")
 
-    if n_jobs == 1:
-        results = [
-            run_single_replication(
-                scenario=scenario,
-                rep=rep,
-                child_seed=child_seeds[rep],
-                methods=methods,
-                run_stability_selection=run_stability_selection,
-                run_ml_interaction_tests=run_ml_interaction_tests,
-                b_null_refits=b_null_refits,
-                failure_log_path=failure_log_path,
-                git_hash=git_hash,
-            )
-            for rep in range(n_replications)
-        ]
-    else:
-        results = Parallel(n_jobs=n_jobs)(
-            delayed(run_single_replication)(
-                scenario=scenario,
-                rep=rep,
-                child_seed=child_seeds[rep],
-                methods=methods,
-                run_stability_selection=run_stability_selection,
-                run_ml_interaction_tests=run_ml_interaction_tests,
-                b_null_refits=b_null_refits,
-                failure_log_path=failure_log_path,
-                git_hash=git_hash,
-            )
-            for rep in range(n_replications)
-        )
+    current_df = existing_df if existing_df is not None else pd.DataFrame()
 
-    df_results = pd.DataFrame(results).sort_values("replication").reset_index(drop=True)
-    save_scenario_shard(df_results, scenario, shard_path, env_metadata)
+    for chunk_start in range(0, len(missing_reps), chunk_size):
+        chunk_reps = missing_reps[chunk_start : chunk_start + chunk_size]
+        if n_jobs == 1:
+            chunk_results = [
+                run_single_replication(
+                    scenario=scenario,
+                    rep=rep,
+                    child_seed=child_seeds[rep],
+                    methods=methods,
+                    run_stability_selection=run_stability_selection,
+                    run_ml_interaction_tests=run_ml_interaction_tests,
+                    b_null_refits=b_null_refits,
+                    failure_log_path=failure_log_path,
+                    git_hash=git_hash,
+                )
+                for rep in chunk_reps
+            ]
+        else:
+            chunk_results = Parallel(n_jobs=n_jobs)(
+                delayed(run_single_replication)(
+                    scenario=scenario,
+                    rep=rep,
+                    child_seed=child_seeds[rep],
+                    methods=methods,
+                    run_stability_selection=run_stability_selection,
+                    run_ml_interaction_tests=run_ml_interaction_tests,
+                    b_null_refits=b_null_refits,
+                    failure_log_path=failure_log_path,
+                    git_hash=git_hash,
+                )
+                for rep in chunk_reps
+            )
+
+        df_chunk = pd.DataFrame(chunk_results)
+        if not current_df.empty:
+            current_df = pd.concat([current_df, df_chunk], ignore_index=True)
+        else:
+            current_df = df_chunk
+
+        current_df = current_df.drop_duplicates(subset=["replication"]).sort_values("replication").reset_index(drop=True)
+        save_scenario_shard(current_df, scenario, shard_path, env_metadata)
 
     if verbose:
         elapsed = time.time() - t0
-        n_fails = (df_results["status"] == "FAILED").sum() if "status" in df_results.columns else 0
-        print(f"[DONE] Saved '{shard_path.name}' ({len(df_results)} reps, {n_fails} failed, {elapsed:.1f}s)")
+        n_fails = (current_df["status"] == "FAILED").sum() if "status" in current_df.columns else 0
+        print(f"[DONE] Saved '{shard_path.name}' ({len(current_df)} reps total, {n_fails} failed, {elapsed:.1f}s)")
 
-    return df_results, True
+    return current_df, True
 
 
 def estimate_replication_seconds(
@@ -465,9 +501,39 @@ def print_dry_run_summary(
         print(f"  Total Scenarios:         {n_scenarios} scenarios ({reps} reps/scenario)")
         print(f"  Total Workload Tasks:    {total_tasks:,} replications")
         print(f"  Already Completed:       {completed_tasks:,} replications ({n_scenarios - (pending_tasks // reps if reps else 0)} shards)")
-        print(f"  Pending Tasks to Run:    {pending_tasks:,} replications")
         print(f"  Est. Sequential Compute: {tier_seq_sec:,.1f}s ({tier_seq_sec / 3600:.2f} core-hours)")
         print(f"  Est. Wall-Clock (n_jobs={n_jobs}): {tier_wall_sec:,.1f}s ({tier_wall_sec / 3600:.2f} hours, or ~{tier_wall_sec / 60:.1f} mins)")
+
+    # Tier 2 staged projection (Milestone 6.7 Part C.4)
+    measured_json = Path("timing_shards/measured_timing.json")
+    if measured_json.exists():
+        try:
+            with open(measured_json) as f:
+                meas_data = json.load(f)
+            t2_sec_task = float(meas_data.get("tier2_sec_per_rep", 65.0))
+            t2_source = "MEASURED RATE (from timing_shards/measured_timing.json)"
+        except Exception:
+            t2_sec_task = 65.0
+            t2_source = "MODEL ESTIMATE"
+    else:
+        t2_scenarios = get_scenarios_for_tier("tier2", methods_cfg)
+        t2_cfg = methods_cfg.get("tiers", {}).get("tier2", {})
+        t2_methods = t2_cfg.get("methods", ["M0", "M1", "M2a", "M2b", "M3", "M4", "M5", "M6"])
+        t2_sec_task = float(np.mean([
+            estimate_replication_seconds(t2_methods, sc.get("n", 150), run_ml_tests=True, run_stability=True, b_null_refits=50)
+            for sc in t2_scenarios
+        ]))
+        t2_source = "MODEL ESTIMATE (uncalibrated; run scripts/time_e2e.sh to measure)"
+
+    t2_n_scenarios = 14
+    print(f"\n[TIER 2 PROJECTION: {t2_n_scenarios} SCENARIOS, n_jobs = {n_jobs}]")
+    print("-" * 88)
+    print(f"  Benchmark Basis:         {t2_source} ({t2_sec_task:.2f}s per task)")
+    for r_stage in [100, 200, 300]:
+        t2_total_seq = t2_n_scenarios * r_stage * t2_sec_task
+        t2_wall_sec = t2_total_seq / max(1, n_jobs)
+        t2_wall_hr = t2_wall_sec / 3600.0
+        print(f"  Stage R = {r_stage:<3d} reps:      {t2_wall_hr:.2f} wall-hours (~{t2_wall_sec/60:.1f} mins) [{t2_n_scenarios * r_stage:,} total tasks]")
 
     print("\n" + "=" * 88)
     print(f"Combined Estimated Wall-Clock Time (Tier 1 + Tier 2 at n_jobs={n_jobs}): {grand_total_sec / 3600:.2f} hours")

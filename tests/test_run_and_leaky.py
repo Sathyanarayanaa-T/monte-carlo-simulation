@@ -121,7 +121,10 @@ def test_run_resumes_without_recomputing(tmp_path: Path, fast_scenario: dict):
         verbose=False,
     )
     assert was_computed3 is True
-    pd.testing.assert_frame_equal(df1, df3)
+    timing_cols = [c for c in df1.columns if "time" in c or c in ("t_total", "runtime_seconds")]
+    data_cols = [c for c in df1.columns if c not in timing_cols]
+    pd.testing.assert_frame_equal(df1[data_cols], df3[data_cols])
+    assert (df3["t_total"] > 0).all()
 
 
 def test_seed_invariance_n_jobs_1_vs_4(tmp_path: Path, fast_scenario: dict):
@@ -163,8 +166,11 @@ def test_seed_invariance_n_jobs_1_vs_4(tmp_path: Path, fast_scenario: dict):
         verbose=False,
     )
 
-    # DataFrames must be identical
-    pd.testing.assert_frame_equal(df_jobs1, df_jobs4)
+    # DataFrames must be identical for statistical outputs
+    timing_cols = [c for c in df_jobs1.columns if "time" in c or c in ("t_total", "runtime_seconds")]
+    data_cols = [c for c in df_jobs1.columns if c not in timing_cols]
+    pd.testing.assert_frame_equal(df_jobs1[data_cols], df_jobs4[data_cols])
+    assert (df_jobs4["t_total"] > 0).all()
 
 
 def test_parquet_embedded_and_sidecar_metadata(tmp_path: Path, fast_scenario: dict):
@@ -241,14 +247,14 @@ def test_dry_run_flag(capsys):
     )
     captured = capsys.readouterr().out
     assert "MONTE CARLO SIMULATION DRY-RUN SUMMARY" in captured
-    assert "Pending Tasks to Run:      60,000 across 60 scenarios" in captured
+    assert "Pending Tasks to Run:      64,000 across 64 scenarios" in captured
     assert "Estimated Wall-Clock Time:" in captured
 
 
 def test_tier_resolution():
     """Verify tier scenario resolutions match specification."""
     tier1_scenarios = get_scenarios_for_tier("tier1")
-    assert len(tier1_scenarios) == 60
+    assert len(tier1_scenarios) == 64
 
     tier2_scenarios = get_scenarios_for_tier("tier2")
     assert len(tier2_scenarios) == 14  # 14 key core scenarios at n in {100, 150}
@@ -311,3 +317,163 @@ def test_shard_measurement_columns(tmp_path: Path, fast_scenario: dict):
     for col in required_meas_cols:
         assert col in df_out.columns, f"Missing measurement column: {col}"
         assert not df_out[col].isna().any(), f"Measurement column {col} contains NaN values"
+
+
+def test_seedsequence_spawn_prefix_invariance():
+    """Verify spawn(200) equals the first 200 children of spawn(300) (Milestone 6.7 Part D)."""
+    master_seq = np.random.SeedSequence(20261013)
+    children_200 = master_seq.spawn(200)
+
+    master_seq_again = np.random.SeedSequence(20261013)
+    children_300 = master_seq_again.spawn(300)
+
+    for i in range(200):
+        assert children_200[i].state == children_300[i].state, f"Mismatch at spawn child {i}"
+
+
+def test_chunked_run_resume_identical_to_uninterrupted(tmp_path: Path, fast_scenario: dict):
+    """Verify stopping after first chunk and resuming gives identical results to an uninterrupted run."""
+    dir_full = tmp_path / "results_full"
+    dir_full.mkdir(parents=True, exist_ok=True)
+
+    dir_staged = tmp_path / "results_staged"
+    dir_staged.mkdir(parents=True, exist_ok=True)
+
+    # Uninterrupted run: 50 reps with chunk_size 25
+    df_full, _ = run_scenario(
+        scenario=fast_scenario,
+        n_replications=50,
+        methods=["M0", "M1"],
+        master_seed=424242,
+        results_dir=dir_full,
+        n_jobs=1,
+        run_stability_selection=False,
+        run_ml_interaction_tests=False,
+        force=True,
+        verbose=False,
+        chunk_size=25,
+    )
+
+    # Staged run: first chunk only (25 reps)
+    df_chunk1, _ = run_scenario(
+        scenario=fast_scenario,
+        n_replications=25,
+        methods=["M0", "M1"],
+        master_seed=424242,
+        results_dir=dir_staged,
+        n_jobs=1,
+        run_stability_selection=False,
+        run_ml_interaction_tests=False,
+        force=True,
+        verbose=False,
+        chunk_size=25,
+    )
+    assert len(df_chunk1) == 25
+
+    # Resume staged run: extend to 50 reps
+    df_resumed, was_computed = run_scenario(
+        scenario=fast_scenario,
+        n_replications=50,
+        methods=["M0", "M1"],
+        master_seed=424242,
+        results_dir=dir_staged,
+        n_jobs=1,
+        run_stability_selection=False,
+        run_ml_interaction_tests=False,
+        force=False,
+        verbose=False,
+        chunk_size=25,
+    )
+    assert was_computed is True
+    assert len(df_resumed) == 50
+
+    # Assert metric results match exactly across all 50 replications
+    cols_to_check = ["m1_f_hit", "m1_t_hit", "m1_h2_hit", "r2_block1", "r2_block2"]
+    for col in cols_to_check:
+        if col in df_full.columns:
+            np.testing.assert_allclose(
+                df_full[col].values,
+                df_resumed[col].values,
+                err_msg=f"Mismatch in column {col} between uninterrupted and resumed runs",
+            )
+
+
+def test_extending_replications_preserves_earlier_rows(tmp_path: Path, fast_scenario: dict):
+    """Verify extending from 25 to 50 replications gives identical rows for 0 to 24."""
+    results_dir = tmp_path / "results_extend"
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    # Initial run: 25 reps
+    df_25, _ = run_scenario(
+        scenario=fast_scenario,
+        n_replications=25,
+        methods=["M0", "M1"],
+        master_seed=99999,
+        results_dir=results_dir,
+        n_jobs=1,
+        run_stability_selection=False,
+        run_ml_interaction_tests=False,
+        force=True,
+        verbose=False,
+        chunk_size=25,
+    )
+
+    # Extend to 50 reps
+    df_50, _ = run_scenario(
+        scenario=fast_scenario,
+        n_replications=50,
+        methods=["M0", "M1"],
+        master_seed=99999,
+        results_dir=results_dir,
+        n_jobs=1,
+        run_stability_selection=False,
+        run_ml_interaction_tests=False,
+        force=False,
+        verbose=False,
+        chunk_size=25,
+    )
+
+    cols_to_check = ["m1_f_hit", "m1_t_hit", "m1_h2_hit", "r2_block1", "r2_block2"]
+    for col in cols_to_check:
+        if col in df_25.columns:
+            np.testing.assert_allclose(
+                df_25[col].values,
+                df_50.iloc[:25][col].values,
+                err_msg=f"Extending replications corrupted earlier row data in {col}",
+            )
+
+    # Verify sidecar metadata JSON contains replication_ids
+    meta_path = results_dir / f"{fast_scenario['name']}_meta.json"
+    assert meta_path.exists()
+    with open(meta_path) as f:
+        meta = json.load(f)
+    assert "replication_ids" in meta
+    assert meta["replication_ids"] == list(range(50))
+
+
+def test_shard_timing_columns(tmp_path: Path, fast_scenario: dict):
+    """Verify M3-M6 timing columns and t_total are recorded in shard output (Part C)."""
+    results_dir = tmp_path / "results_timing"
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    df_out, _ = run_scenario(
+        scenario=fast_scenario,
+        n_replications=2,
+        methods=["M0", "M1", "M3"],
+        master_seed=123,
+        results_dir=results_dir,
+        n_jobs=1,
+        run_stability_selection=True,
+        run_ml_interaction_tests=False,
+        force=True,
+        verbose=False,
+        chunk_size=25,
+    )
+
+    assert "t_total" in df_out.columns
+    assert "m3_time_nested_cv" in df_out.columns
+    assert "m3_time_full_fit" in df_out.columns
+    assert "m3_time_null_test" in df_out.columns
+    assert "m3_time_bootstrap" in df_out.columns
+    assert "m3_t_total" in df_out.columns
+    assert (df_out["t_total"] > 0).all()

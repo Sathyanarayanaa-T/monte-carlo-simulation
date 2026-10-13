@@ -61,16 +61,19 @@ echo "  -> Completed in ${DUR_T2_INTER}s"
 
 T_TOTAL=$(echo "$(date +%s.%N) - $T0" | bc)
 
-# Calculate measured seconds per replication per tier
+# Calculate measured seconds per replication per tier and print component timing breakdown
 uv run python -c "
 import json
+from pathlib import Path
+import pandas as pd
+import numpy as np
+
 dur_t1_none = float('$DUR_T1_NONE')
 dur_t1_inter = float('$DUR_T1_INTER')
 dur_t2_none = float('$DUR_T2_NONE')
 dur_t2_inter = float('$DUR_T2_INTER')
 total_time = float('$T_TOTAL')
 
-# In parallel runs with 5 reps on 6 jobs, wall-clock duration reflects per-rep time
 sec_per_rep_t1 = (dur_t1_none + dur_t1_inter) / 2.0
 sec_per_rep_t2 = (dur_t2_none + dur_t2_inter) / 2.0
 
@@ -87,12 +90,39 @@ data = {
 with open('${TIMING_DIR}/measured_timing.json', 'w') as f:
     json.dump(data, f, indent=2)
 
-print('\n' + '=' * 72)
+print('\n' + '=' * 80)
 print('TIMING BENCHMARK RESULTS (PER REPLICATION)')
-print('=' * 72)
+print('=' * 80)
 print(f'Tier 1 Measured Rate: {sec_per_rep_t1:.2f}s per replication (n=150)')
 print(f'Tier 2 Measured Rate: {sec_per_rep_t2:.2f}s per replication (n=150)')
 print(f'Total Benchmark Wall-Clock Duration: {total_time:.1f}s ({total_time / 60:.2f} minutes)')
-print('=' * 72)
 print(f'Saved benchmark data to ${TIMING_DIR}/measured_timing.json')
+
+# Component timing breakdown from shards
+shard_dir = Path('${TIMING_DIR}')
+parquet_files = sorted(list(shard_dir.glob('*.parquet')))
+if parquet_files:
+    print('\n' + '-' * 80)
+    print('COMPONENT TIMING BREAKDOWN PER METHOD (MEAN SECONDS PER REPLICATION)')
+    print('-' * 80)
+    for p_file in parquet_files:
+        df = pd.read_parquet(p_file)
+        sc_name = p_file.stem
+        print(f'\nScenario: {sc_name} (R = {len(df)} reps)')
+        print(f'  Overall Mean Replication Time: {df[\"t_total\"].mean():.2f}s')
+        
+        methods = ['m3', 'm4', 'm5', 'm6']
+        header = f'  {\"Method\":<8s} | {\"Nested CV\":<12s} | {\"Full Fit\":<12s} | {\"Null Test\":<12s} | {\"Bootstrap\":<12s} | {\"Method Total\":<12s}'
+        print(header)
+        print('  ' + '-' * 75)
+        for m in methods:
+            tot_col = f'{m}_t_total'
+            if tot_col in df.columns and df[tot_col].sum() > 0:
+                ncv = df.get(f'{m}_time_nested_cv', pd.Series([0])).mean()
+                ff = df.get(f'{m}_time_full_fit', pd.Series([0])).mean()
+                null_t = df.get(f'{m}_time_null_test', pd.Series([0])).mean()
+                boot = df.get(f'{m}_time_bootstrap', pd.Series([0])).mean()
+                tot = df.get(tot_col, pd.Series([0])).mean()
+                print(f'  {m.upper():<8s} | {ncv:<12.2f} | {ff:<12.2f} | {null_t:<12.2f} | {boot:<12.2f} | {tot:<12.2f}')
+print('=' * 80)
 "

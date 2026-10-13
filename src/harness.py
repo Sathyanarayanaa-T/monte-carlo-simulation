@@ -9,6 +9,7 @@ SPEC.md Section 5 (line 96):
 
 from __future__ import annotations
 
+import time
 from typing import Any
 import numpy as np
 import pandas as pd
@@ -74,6 +75,10 @@ def run_nested_cv(
     preds_by_method: dict[str, list[float]] = {m: [] for m in active_methods}
     y_test_pooled: list[float] = []
 
+    time_nested_cv: dict[str, float] = {"m3": 0.0, "m4": 0.0, "m5": 0.0, "m6": 0.0}
+    time_full_fit: dict[str, float] = {"m3": 0.0, "m4": 0.0, "m5": 0.0, "m6": 0.0}
+    time_null_test: dict[str, float] = {"m3": 0.0, "m4": 0.0, "m5": 0.0, "m6": 0.0}
+
     split_seed = seed
     for train_idx, test_idx in rkf.split(X_block2):
         split_seed += 1
@@ -109,23 +114,31 @@ def run_nested_cv(
 
         # M3: ElasticNet
         if "M3" in active_methods:
+            t0 = time.perf_counter()
             m3 = M3ElasticNet(random_state=split_seed).fit(X2_train, y_train, run_stability=False)
             preds_by_method["M3"].extend(m3.predict(X2_test))
+            time_nested_cv["m3"] += time.perf_counter() - t0
 
         # M4: Random Forest (tuned by OOB R2)
         if "M4" in active_methods:
+            t0 = time.perf_counter()
             m4 = M4RandomForest(random_state=split_seed).fit(X2_train, y_train, tune_oob=True)
             preds_by_method["M4"].extend(m4.predict(X2_test))
+            time_nested_cv["m4"] += time.perf_counter() - t0
 
         # M5: Gradient Boosting (tuned by inner CV)
         if "M5" in active_methods:
+            t0 = time.perf_counter()
             m5 = M5GradientBoosting(random_state=split_seed).fit(X2_train, y_train, tune_cv=True)
             preds_by_method["M5"].extend(m5.predict(X2_test))
+            time_nested_cv["m5"] += time.perf_counter() - t0
 
         # M6: EBM
         if "M6" in active_methods:
+            t0 = time.perf_counter()
             m6 = M6ExplainableBoosting(random_state=split_seed).fit(X2_train, y_train)
             preds_by_method["M6"].extend(m6.predict(X2_test))
+            time_nested_cv["m6"] += time.perf_counter() - t0
 
     y_arr = np.array(y_test_pooled)
     total_var = float(np.sum((y_arr - np.mean(y_arr)) ** 2))
@@ -156,14 +169,20 @@ def run_nested_cv(
     if "M2B" in active_methods:
         full_fits["m2b"] = M2bAllPairwiseInteractions().fit(X_block2, y)
     if "M3" in active_methods:
-        full_fits["m3"] = M3ElasticNet(random_state=seed).fit(
+        m3_fitted = M3ElasticNet(random_state=seed).fit(
             X_block2, y, run_stability=run_stability_selection
         )
+        full_fits["m3"] = m3_fitted
+        time_full_fit["m3"] = getattr(m3_fitted, "time_full_fit_", 0.0)
 
     if "M4" in active_methods:
+        t0 = time.perf_counter()
         m4 = M4RandomForest(random_state=seed).fit(X_block2, y, tune_oob=True)
+        time_full_fit["m4"] = time.perf_counter() - t0
         if run_ml_interaction_tests:
+            t0 = time.perf_counter()
             m4.run_interaction_test(X_block2, y, b_null_refits=b_null_refits)
+            time_null_test["m4"] = time.perf_counter() - t0
         else:
             t_obs, pairs, top1 = m4.compute_interaction_stats(X_block2)
             m4.t_observed_ = t_obs
@@ -172,9 +191,13 @@ def run_nested_cv(
         full_fits["m4"] = m4
 
     if "M5" in active_methods:
+        t0 = time.perf_counter()
         m5 = M5GradientBoosting(random_state=seed).fit(X_block2, y, tune_cv=True)
+        time_full_fit["m5"] = time.perf_counter() - t0
         if run_ml_interaction_tests:
+            t0 = time.perf_counter()
             m5.run_interaction_test(X_block2, y, b_null_refits=b_null_refits)
+            time_null_test["m5"] = time.perf_counter() - t0
         else:
             t_obs, pairs, top1 = m5.compute_interaction_stats(X_block2)
             m5.t_observed_ = t_obs
@@ -183,9 +206,13 @@ def run_nested_cv(
         full_fits["m5"] = m5
 
     if "M6" in active_methods:
+        t0 = time.perf_counter()
         m6 = M6ExplainableBoosting(random_state=seed).fit(X_block2, y)
+        time_full_fit["m6"] = time.perf_counter() - t0
         if run_ml_interaction_tests:
+            t0 = time.perf_counter()
             m6.run_interaction_test(X_block2, y, b_null_refits=b_null_refits)
+            time_null_test["m6"] = time.perf_counter() - t0
         else:
             t_obs, pairs, top1 = m6.compute_interaction_stats(X_block2)
             m6.t_observed_ = t_obs
@@ -200,6 +227,11 @@ def run_nested_cv(
         "X_block2": X_block2,
         "y": y,
         "data": data,
+        "component_timings": {
+            "time_nested_cv": time_nested_cv,
+            "time_full_fit": time_full_fit,
+            "time_null_test": time_null_test,
+        },
     }
     output.update(full_fits)
     return output

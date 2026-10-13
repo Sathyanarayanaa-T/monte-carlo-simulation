@@ -11,6 +11,7 @@ SPEC.md Section 6:
 
 from __future__ import annotations
 
+import time
 from typing import Any
 import numpy as np
 import pandas as pd
@@ -30,8 +31,13 @@ def compute_bootstrap_ranking_stability(
     substantive_cols: list[str] = SUBSTANTIVE_COLS_DEFAULT,
     n_bootstraps: int = 50,
     seed: int = 42,
+    fitted_model: Any = None,
 ) -> float:
-    """Compute mean Kendall's tau between original and bootstrap feature rankings (SPEC Section 6.C)."""
+    """Compute mean Kendall's tau between original and bootstrap feature rankings (SPEC Section 6.C).
+
+    Milestone 6.7 Part C: Tuning-conditional bootstrap.
+    Reuses hyperparameters selected on observed data (M4: min_samples_leaf; M5: depth and n_estimators).
+    """
     n = len(y)
     rng = np.random.default_rng(seed)
 
@@ -42,10 +48,20 @@ def compute_bootstrap_ranking_stability(
             coefs = {col: abs(float(ols.params[col])) for col in substantive_cols if col in ols.params}
             return sorted(substantive_cols, key=lambda c: coefs.get(c, 0.0), reverse=True)
         elif model_name == "M4":
-            rf = RandomForestRegressor(n_estimators=100, min_samples_leaf=5, bootstrap=True, random_state=s, n_jobs=1)
+            leaf = getattr(fitted_model, "best_min_samples_leaf_", 5) if fitted_model is not None else 5
+            n_est = getattr(fitted_model, "n_estimators", 100) if fitted_model is not None else 100
+            rf = RandomForestRegressor(n_estimators=n_est, min_samples_leaf=leaf, bootstrap=True, random_state=s, n_jobs=1)
             rf.fit(X_data.values, y_data)
             cols = list(X_data.columns)
             imps = {col: float(rf.feature_importances_[cols.index(col)]) for col in substantive_cols if col in cols}
+            return sorted(substantive_cols, key=lambda c: imps.get(c, 0.0), reverse=True)
+        elif model_name == "M5":
+            depth = getattr(fitted_model, "best_max_depth_", 2) if fitted_model is not None else 2
+            n_est = getattr(fitted_model, "best_n_estimators_", 100) if fitted_model is not None else 100
+            gb = GradientBoostingRegressor(learning_rate=0.03, subsample=0.7, min_samples_leaf=5, max_depth=depth, n_estimators=n_est, random_state=s)
+            gb.fit(X_data.values, y_data)
+            cols = list(X_data.columns)
+            imps = {col: float(gb.feature_importances_[cols.index(col)]) for col in substantive_cols if col in cols}
             return sorted(substantive_cols, key=lambda c: imps.get(c, 0.0), reverse=True)
         else:
             X_c = sm.add_constant(X_data, has_constant="add")
@@ -258,11 +274,41 @@ def compute_replication_metrics(
         ranking_m6 = sorted(SUBSTANTIVE_COLS_DEFAULT, key=lambda c: m6.feature_importances_.get(c, 0.0), reverse=True)
         evaluate_ranking(ranking_m6, "m6")
 
-    # Bootstrap stability (optional or on full run)
+    # Bootstrap stability (Milestone 6.7: Tuning-conditional bootstrap)
+    time_bootstrap: dict[str, float] = {"m3": 0.0, "m4": 0.0, "m5": 0.0, "m6": 0.0}
+    m3_obj = cv_output.get("m3")
+    if m3_obj is not None:
+        time_bootstrap["m3"] = float(getattr(m3_obj, "time_stability_", 0.0))
+
     if run_stability and X_block2 is not None and y is not None:
-        metric_c["m1_stability"] = compute_bootstrap_ranking_stability("M1", X_block2, y, n_bootstraps=n_bootstraps)
+        metric_c["m1_stability"] = compute_bootstrap_ranking_stability("M1", X_block2, y, fitted_model=m1, n_bootstraps=n_bootstraps)
         if m4 is not None:
-            metric_c["m4_stability"] = compute_bootstrap_ranking_stability("M4", X_block2, y, n_bootstraps=n_bootstraps)
+            t0 = time.perf_counter()
+            metric_c["m4_stability"] = compute_bootstrap_ranking_stability("M4", X_block2, y, fitted_model=m4, n_bootstraps=n_bootstraps)
+            time_bootstrap["m4"] = time.perf_counter() - t0
+        if m5 is not None:
+            t0 = time.perf_counter()
+            metric_c["m5_stability"] = compute_bootstrap_ranking_stability("M5", X_block2, y, fitted_model=m5, n_bootstraps=n_bootstraps)
+            time_bootstrap["m5"] = time.perf_counter() - t0
+
+    # Component timings for M3 to M6 (Milestone 6.7 Part C)
+    metric_timing = {}
+    comp_timings = cv_output.get("component_timings", {})
+    t_nested_cv = comp_timings.get("time_nested_cv", {})
+    t_full_fit = comp_timings.get("time_full_fit", {})
+    t_null_test = comp_timings.get("time_null_test", {})
+
+    for m in ["m3", "m4", "m5", "m6"]:
+        t_ncv = float(t_nested_cv.get(m, 0.0))
+        t_ff = float(t_full_fit.get(m, 0.0))
+        t_null = float(t_null_test.get(m, 0.0))
+        t_boot = float(time_bootstrap.get(m, 0.0))
+        t_tot = t_ncv + t_ff + t_null + t_boot
+        metric_timing[f"{m}_time_nested_cv"] = t_ncv
+        metric_timing[f"{m}_time_full_fit"] = t_ff
+        metric_timing[f"{m}_time_null_test"] = t_null
+        metric_timing[f"{m}_time_bootstrap"] = t_boot
+        metric_timing[f"{m}_t_total"] = t_tot
 
     # H3 Check (SPEC line 128: at least one interaction surfaces)
     any_interaction_detected = int(
@@ -360,4 +406,5 @@ def compute_replication_metrics(
     row.update(metric_e)
     row.update(metric_h)
     row.update(metric_meas)
+    row.update(metric_timing)
     return row

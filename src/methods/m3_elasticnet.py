@@ -12,6 +12,7 @@ SPEC.md Section 5 (line 92):
 from __future__ import annotations
 
 import itertools
+import time
 from typing import Any
 import numpy as np
 import pandas as pd
@@ -131,6 +132,7 @@ class M3ElasticNet:
         # Adjust inner CV folds for small n (SPEC Section 5: 3-fold at n <= 50)
         cv_folds = 3 if n <= 50 else self.inner_cv_folds
 
+        t_start_fit = time.perf_counter()
         # Tune hyperparameters
         self.best_l1_ratio_, self.best_alpha_ = self._tune_with_one_se_rule(
             X_scaled, y_arr, cv_folds, self.random_state
@@ -144,6 +146,8 @@ class M3ElasticNet:
             random_state=self.random_state,
         )
         self.model_.fit(X_scaled, y_arr)
+        self.time_full_fit_ = time.perf_counter() - t_start_fit
+        self.time_stability_ = 0.0
 
         if not run_stability:
             return self
@@ -151,6 +155,7 @@ class M3ElasticNet:
         # ---------------------------------------------------------------------
         # Stability Selection (100 bootstrap refits)
         # ---------------------------------------------------------------------
+        t_start_stab = time.perf_counter()
         rng = np.random.default_rng(self.random_state + 500)
         prod_indices = [self.feature_names_.index(p_col) for p_col in self.product_cols_]
 
@@ -182,6 +187,7 @@ class M3ElasticNet:
 
         best_idx = int(np.argmax(freqs))
         self.top1_pair_ = ALL_10_PAIRS[best_idx]
+        self.time_stability_ = time.perf_counter() - t_start_stab
 
         return self
 

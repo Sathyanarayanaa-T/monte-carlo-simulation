@@ -162,6 +162,7 @@ def get_scenario_catalog(config_path: str | Path = "config/scenarios.yaml") -> d
         "acquiescence": {"acquiescence_gamma": 0.30},
         "ceiling_shift": {"ceiling_shift": 0.60},
         "cross_loading": {"cross_loading": 0.30},
+        "cross_loading_0p5": {"cross_loading": 0.50},
         "contaminated": {"kappa": 0.40},
     }
 

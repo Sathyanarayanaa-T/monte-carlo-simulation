@@ -1,4 +1,5 @@
 <!-- Change Log: Updated Section 3.3 (psi pure non-linear share after residualising; loadings equispaced by default), Section 3.4 (ceiling-shift in scored direction), Section 4 (Tier 2 14-scenario grid), Section 10 (structural-validity gate evaluated at n=100 and n=150). -->
+<!-- Milestone 6.7: Added sens_cross_loading_0p5_n{100,150}_{none,inter_med} sensitivity scenarios (cross_loading 0.50); Tier 1 expanded from 60 to 64 scenarios (Tier 2 unchanged at 14). -->
 Monte Carlo Simulation Plan: Validating the FEDRS Analysis Pipeline
 Prepared for Sathyanarayanaa T | Draft v2 (reviewer-criticism revision) | 13 October 2026
 1. Purpose and scope
