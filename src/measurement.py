@@ -135,11 +135,64 @@ def htmt(
     return result
 
 
+_PARALLEL_ANALYSIS_THRESHOLDS_CACHE: dict[tuple[int, int, int, float], np.ndarray] = {}
+
+
+def get_parallel_analysis_thresholds(
+    n_obs: int,
+    n_items: int,
+    n_iter: int = 500,
+    percentile: float = 95.0,
+    use_cache: bool = True,
+    seed: int | np.random.Generator | None = None,
+) -> np.ndarray:
+    """Calculate and cache Horn's null eigenvalue percentile thresholds.
+
+    Parameters:
+    - n_obs: sample size n.
+    - n_items: number of items p.
+    - n_iter: number of Monte Carlo null datasets (default: 500).
+    - percentile: percentile cutoff (default: 95.0).
+    - use_cache: whether to look up/store in process-level cache (default: True).
+    - seed: optional random seed. If None and use_cache is True, seed is derived
+      deterministically from (n_obs, n_items) to ensure invariance to replication seeds.
+
+    Returns:
+    - np.ndarray of shape (n_items,) with critical eigenvalue cutoffs.
+    """
+    cache_key = (n_obs, n_items, n_iter, percentile)
+    if use_cache and seed is None and cache_key in _PARALLEL_ANALYSIS_THRESHOLDS_CACHE:
+        return _PARALLEL_ANALYSIS_THRESHOLDS_CACHE[cache_key].copy()
+
+    if seed is None:
+        # Fixed deterministic seed derived solely from (n_obs, n_items)
+        seed_val = int(np.random.SeedSequence([20261013, n_obs, n_items]).generate_state(1)[0])
+        rng = np.random.default_rng(seed_val)
+    elif isinstance(seed, np.random.Generator):
+        rng = seed
+    else:
+        rng = np.random.default_rng(seed)
+
+    null_eigs = np.zeros((n_iter, n_items), dtype=np.float64)
+    for b in range(n_iter):
+        W = rng.normal(0.0, 1.0, size=(n_obs, n_items))
+        R_null = np.corrcoef(W, rowvar=False)
+        null_eigs[b] = np.sort(np.linalg.eigvalsh(R_null))[::-1]
+
+    crit_eigs = np.percentile(null_eigs, percentile, axis=0)
+
+    if use_cache and seed is None:
+        _PARALLEL_ANALYSIS_THRESHOLDS_CACHE[cache_key] = crit_eigs
+
+    return crit_eigs.copy()
+
+
 def parallel_analysis(
     items: pd.DataFrame | np.ndarray,
     n_iter: int = 500,
     percentile: float = 95.0,
     seed: int | np.random.Generator | None = None,
+    use_cache: bool = True,
 ) -> int:
     """Determine number of retained factors via Horn's Parallel Analysis.
 
@@ -148,20 +201,18 @@ def parallel_analysis(
     1. Compute sample Pearson correlation matrix R of items (n x p).
     2. Extract sample eigenvalues in descending order:
        lambda_1 >= lambda_2 >= ... >= lambda_p
-    3. For b = 1 .. n_iter:
-       a. Generate random matrix W ~ N(0, I_p) of shape (n x p).
-       b. Compute correlation matrix R_null and its eigenvalues:
-          lambda_null_1^(b) >= ... >= lambda_null_p^(b)
-    4. For each component k (1 .. p), calculate the benchmark threshold:
-       lambda_crit_k = percentile_{b}(lambda_null_k^(b), q=percentile)
-    5. Count retained factors where sample eigenvalue exceeds null threshold:
+    3. Null benchmark eigenvalues extracted from get_parallel_analysis_thresholds
+       (cached per (n_obs, n_items) with deterministic seed derived from dimensions).
+    4. Count retained factors where sample eigenvalue exceeds null threshold:
        n_factors = sum_{k=1}^p 1[lambda_k > lambda_crit_k]
+       Sequential retention rule stops at the first failure.
 
     Parameters:
     - items: DataFrame or 2D array of item responses (n observations x p items).
     - n_iter: number of random null datasets to simulate (default: 500).
     - percentile: percentile cutoff for eigenvalue comparison (default: 95.0).
     - seed: optional random seed or numpy Generator.
+    - use_cache: whether to use cached null eigenvalue thresholds (default: True).
 
     Returns:
     - int: number of retained factors.
@@ -180,16 +231,16 @@ def parallel_analysis(
     # eigvalsh returns eigenvalues in ascending order
     sample_eigs = np.sort(np.linalg.eigvalsh(R_sample))[::-1]
 
-    rng = seed if isinstance(seed, np.random.Generator) else np.random.default_rng(seed)
+    # Obtain critical eigenvalue cutoffs (cached or computed)
+    crit_eigs = get_parallel_analysis_thresholds(
+        n_obs=n,
+        n_items=p,
+        n_iter=n_iter,
+        percentile=percentile,
+        use_cache=use_cache,
+        seed=seed,
+    )
 
-    # Simulate null correlation matrices
-    null_eigs = np.zeros((n_iter, p), dtype=np.float64)
-    for b in range(n_iter):
-        W = rng.normal(0.0, 1.0, size=(n, p))
-        R_null = np.corrcoef(W, rowvar=False)
-        null_eigs[b] = np.sort(np.linalg.eigvalsh(R_null))[::-1]
-
-    crit_eigs = np.percentile(null_eigs, percentile, axis=0)
     # Sequential retention rule (Horn, 1965; Hayton et al., 2004):
     # Retain factors up to the first component where sample eigenvalue <= null threshold
     n_retained = 0

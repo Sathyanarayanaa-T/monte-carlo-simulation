@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 
 from src.measurement import (
+    get_parallel_analysis_thresholds,
     harman_first_factor_share,
     htmt,
     lindell_whitney,
@@ -121,3 +122,41 @@ def test_harman_first_factor_share_hand_computable():
     share = harman_first_factor_share(items_1factor)
     assert share > 0.50, f"Harman variance share should exceed 0.50, got {share:.4f}"
     assert np.isclose(share, 0.8575, atol=0.05), f"Expected share ~ 0.8575, got {share:.4f}"
+
+
+def test_cached_parallel_analysis_thresholds_agree_with_uncached():
+    """Verify that cached parallel-analysis thresholds agree with uncached ones within MC error."""
+    n_obs = 150
+    n_items = 8
+    n_iter = 500
+
+    # 1. Fetch cached threshold (deterministic seed based on dimensions)
+    cached_eigs = get_parallel_analysis_thresholds(
+        n_obs=n_obs,
+        n_items=n_items,
+        n_iter=n_iter,
+        percentile=95.0,
+        use_cache=True,
+    )
+
+    # 2. Fetch uncached threshold with an independent seed and B=1000 null resamples
+    uncached_eigs = get_parallel_analysis_thresholds(
+        n_obs=n_obs,
+        n_items=n_items,
+        n_iter=1000,
+        percentile=95.0,
+        use_cache=False,
+        seed=99999,
+    )
+
+    # Invariance and dimensional checks
+    assert len(cached_eigs) == n_items
+    assert len(uncached_eigs) == n_items
+    # Cached call returns exact copy on second call
+    second_cached = get_parallel_analysis_thresholds(n_obs=n_obs, n_items=n_items, n_iter=n_iter)
+    assert np.array_equal(cached_eigs, second_cached)
+
+    # Monte Carlo agreement: 95th percentile eigenvalue thresholds agree within 0.05
+    max_diff = np.max(np.abs(cached_eigs - uncached_eigs))
+    assert max_diff < 0.05, f"Cached and uncached eigenvalues differ by {max_diff:.4f} > 0.05"
+

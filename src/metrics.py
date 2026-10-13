@@ -94,18 +94,21 @@ def compute_replication_metrics(
         "score_B_iii": float(lin_weights.get("B_iii", 0.15)),
     }
 
-    # Oracle ground truth ranking and tie detection (Part C)
-    is_tied_scenario = False
+    # Oracle ground truth ranking and per-k tie detection (Milestone 6.6 Part B)
+    top1_defined = True
+    top2_defined = True
     if oracle_ranking is None:
         try:
             oracle_imps = oracle_importance(scenario_dict, n_pop=50_000, seed=42, n_repeats=1)
             sorted_imps = sorted(oracle_imps.values(), reverse=True)
-            for i in range(len(sorted_imps) - 1):
-                v1 = sorted_imps[i]
-                v2 = sorted_imps[i + 1]
-                if max(v1, v2) > 0 and (abs(v1 - v2) / max(v1, v2)) < 0.10:
-                    is_tied_scenario = True
-                    break
+            # Top-1 is defined iff Rank 1 exceeds Rank 2 by at least 10% relative
+            if len(sorted_imps) >= 2:
+                v1, v2 = sorted_imps[0], sorted_imps[1]
+                top1_defined = bool(v1 > 0 and ((v1 - v2) / v1) >= 0.10)
+            # Top-2 is defined iff Rank 2 exceeds Rank 3 by at least 10% relative
+            if len(sorted_imps) >= 3:
+                v2, v3 = sorted_imps[1], sorted_imps[2]
+                top2_defined = bool(v2 > 0 and ((v2 - v3) / v2) >= 0.10)
             oracle_sub_ranking = sorted(
                 SUBSTANTIVE_COLS_DEFAULT,
                 key=lambda f: oracle_imps.get(f.replace("score_", ""), 0.0),
@@ -230,13 +233,9 @@ def compute_replication_metrics(
     def evaluate_ranking(ranking: list[str], prefix: str):
         method_ranks = [ranking.index(c) for c in SUBSTANTIVE_COLS_DEFAULT]
         res = stats.kendalltau(oracle_ranks, method_ranks, variant="b")
-        tau = float(res.statistic) if not np.isnan(res.statistic) else 1.0
-        if is_tied_scenario:
-            top1 = float("nan")
-            top2 = float("nan")
-        else:
-            top1 = float(int(ranking[0] == oracle_sub_ranking[0]))
-            top2 = float(int(set(ranking[:2]) == set(oracle_sub_ranking[:2])))
+        tau = float(res.statistic) if hasattr(res, "statistic") else float(res[0])
+        top1 = float(int(ranking[0] == oracle_sub_ranking[0])) if top1_defined else float("nan")
+        top2 = float(int(set(ranking[:2]) == set(oracle_sub_ranking[:2]))) if top2_defined else float("nan")
         metric_c[f"{prefix}_kendall_tau"] = tau
         metric_c[f"{prefix}_top1_recovery"] = top1
         metric_c[f"{prefix}_top2_recovery"] = top2

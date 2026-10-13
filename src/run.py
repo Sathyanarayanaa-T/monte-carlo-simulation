@@ -412,8 +412,12 @@ def print_dry_run_summary(
     results_path = Path(results_dir)
     tiers = methods_cfg.get("tiers", {})
 
+    is_calibrated = Path("timing_shards/measured_timing.json").exists()
+    mode_label = "EMPIRICALLY CALIBRATED (from scripts/time_e2e.sh)" if is_calibrated else "MODEL-BASED ESTIMATE (uncalibrated; run scripts/time_e2e.sh to measure)"
+
     print("=" * 88)
     print("MONTE CARLO SIMULATION DRY-RUN WORKLOAD ESTIMATOR (SPEC.md Section 8)")
+    print(f"Estimation Mode:            {mode_label}")
     print(f"Target Resource Allocation: n_jobs = {n_jobs}")
     print("=" * 88)
 
@@ -549,8 +553,12 @@ def run_simulation(
         )
         est_parallel_sec = est_sequential_sec / max(1, n_jobs)
 
+        is_calibrated = Path("timing_shards/measured_timing.json").exists()
+        mode_label = "EMPIRICALLY CALIBRATED (from scripts/time_e2e.sh)" if is_calibrated else "MODEL-BASED ESTIMATE (uncalibrated; run scripts/time_e2e.sh to measure)"
+
         print("=" * 88)
         print("MONTE CARLO SIMULATION DRY-RUN SUMMARY (SPEC.md Section 8)")
+        print(f"Estimation Mode:           {mode_label}")
         print("=" * 88)
         print(f"Tier:                      {tier} ({tier_cfg.get('description', '')})")
         print(f"Active Methods:            {', '.join(methods)}")

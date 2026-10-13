@@ -50,3 +50,29 @@ def test_low_reliability_target_band():
         # 4-item constructs are ~0.53, 6-item constructs are ~0.70.
         # Allow [0.50, 0.75]
         assert 0.50 <= omega <= 0.75, f"Low-rel Omega {omega:.3f} for {construct} outside [0.50, 0.75]"
+
+
+def test_reliability_differs_between_ceiling_shift_modes():
+    """Verify that scored and raw ceiling shift modes produce non-identical reliabilities."""
+    sc_scored = dgp.build_scenario({"n": 50_000, "ceiling_shift_direction": "scored"})
+    sc_raw = dgp.build_scenario({"n": 50_000, "ceiling_shift_direction": "raw"})
+
+    df_scored = dgp.generate(sc_scored, seed=42)
+    df_raw = dgp.generate(sc_raw, seed=42)
+
+    cols_a = [c for c in df_scored.columns if c.startswith("A_tech_") and c[len("A_tech_"):].isdigit()]
+    alpha_scored = calc_cronbach_alpha(df_scored[cols_a].values)
+    alpha_raw = calc_cronbach_alpha(df_raw[cols_a].values)
+    omega_scored = calc_mcdonald_omega(df_scored[cols_a].values)
+    omega_raw = calc_mcdonald_omega(df_raw[cols_a].values)
+
+    # Scored and raw modes must not be identical due to asymmetric reverse-item thresholding
+    assert abs(alpha_scored - alpha_raw) > 1e-5, f"Alpha identical between modes: {alpha_scored:.6f} vs {alpha_raw:.6f}"
+    assert abs(omega_scored - omega_raw) > 1e-5, f"Omega identical between modes: {omega_scored:.6f} vs {omega_raw:.6f}"
+
+    # Category 5 for reverse-keyed item A_tech_5 must be substantially higher in scored mode than raw mode
+    p5_scored = float((df_scored["A_tech_5"] == 5).mean())
+    p5_raw = float((df_raw["A_tech_5"] == 5).mean())
+    assert p5_scored > 2.0 * p5_raw, f"Expected p5_scored > 2*p5_raw, got {p5_scored:.4f} vs {p5_raw:.4f}"
+
+

@@ -4,5 +4,5 @@ __pycache__/
 .venv/
 results/*.parquet
 timing_shards/
-logs/*.log
+logs/
 
