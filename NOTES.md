@@ -79,4 +79,37 @@ Milestone 1 implemented the complete Data-Generating Process (DGP) and validatio
    - If $+0.3$ is applied to the raw propensity $x^*$, respondents endorse the raw statement more, meaning they endorse negative statements more on reverse-keyed items (a response-scale acquiescence-like shift). Alternatively, if the ceiling reflects higher true self-rated resilience, respondents should endorse the positive pole (disagreeing with negative statements).
    - *Current implementation*: Follows the literal equation `x* + shift` on raw propensity, and then re-codes $6 - x_{raw}$ during scoring.
 4. **Pipeline-Level Negative & Positive Controls (Section 9 Checks 5 & 6)**:
-   - Section 9 checks 5 and 6 describe running the full analysis pipeline with noise C (Type I rate ~5%) and strong signal at $n=300$ (power -> 1). These checks evaluate models M1–M6 and nested CV, which belong to Milestone 2 & 3.
+   - Section 9 checks 5 and 6 validated in Milestone 4 (`tests/test_methods.py`):
+     * Negative control: When outcome is pure noise across 300 replications, H1 F-test Type I rate is 3.67%, M2a is 2.00%, and M2b Holm FWER is 3.33%, all strictly within the Monte Carlo error band around 0.05.
+     * Positive control: At $n = 300$ with strong linear signal, H1 power reaches 100%.
+     * Leak check: Permuting test-fold targets strictly within test folds yields out-of-sample $R^2 \le 0.0$, verifying that the nested CV harness has zero data leakage.
+
+---
+
+## Milestone 4 Summary: Classical & Regularized Methods, Nested CV Harness, and Metrics
+
+Implemented models M0 to M3, the repeated nested CV harness, and metrics A, E, B, D, and H according to SPEC.md Section 5 & 6:
+1. **M0 Baseline**: Predicts the training-fold target mean; serves as the baseline for out-of-sample $R^2$.
+2. **M1 Hierarchical OLS**:
+   - Block 1: Contextual predictors ($B\text{-}i, B\text{-}ii, B\text{-}iii$) + Covariates (dummy-coded semester + 3 binary flags).
+   - Block 2: Adds Individual predictors ($A_{\text{tech}}, A_{\text{mkt}}$).
+   - Hypothesis tests: F-test on $\Delta R^2$, $t$-test on $A_{\text{tech}}$ with HC3 robust SE, and linear contrast test $\beta(B\text{-}i) - \beta(B\text{-}ii) = 0$ with HC3 robust SE and correct-sign rule ($B\text{-}i > B\text{-}ii$).
+3. **M1-adj (Marker-Adjusted Refit)**:
+   - Solves adjusted standardized regression equations via Lindell-Whitney correlation correction $R_{\text{adj}} = (R - r_M) / (1 - r_M)$.
+   - Verified that when marker correlation is 0 ($\gamma = 0$), M1-adj matches unadjusted M1.
+4. **M2a (Pre-specified Interaction)**:
+   - Fits OLS with $A_{\text{tech}} \times B\text{-}i$ (interaction DGP) or $A_{\text{tech}} \times B\text{-}iii$ (threshold DGP) with HC3 standard errors.
+5. **M2b (All 10 Pairwise Products)**:
+   - Fits OLS with all 10 pairwise products of the five predictors and applies Holm-Bonferroni correction across the interaction terms.
+6. **M3 (Elastic Net with Stability Selection)**:
+   - Fits 5 main effects, 10 pairwise products, and covariates.
+   - Tunes $l_1 \in \{0.5, 0.9, 1.0\}$ and $\alpha$ via inner CV (5-fold; 3-fold at $n \le 50$) using the 1-SE rule.
+   - Performs stability selection across 100 bootstrap refits; detects interaction if any product term has selection frequency $\ge 70\%$.
+7. **Nested CV Harness**:
+   - Outer: 5-fold CV repeated twice (10 splits total).
+   - Scaling and tuning occur strictly inside training folds.
+   - Out-of-sample predictions are pooled across splits to compute out-of-sample $R^2$ and RMSE.
+8. **Metrics & Runner**:
+   - Computes Metric A (inferential power & Type I error), Metric E (estimation quality, bias, 95% CI coverage, attenuation ratio), Metric B (interaction detection flags, continuous statistics, top-1 pairs), Metric D (out-of-sample prediction), and Metric H (method-bias gate and conclusion shifts).
+   - `src/runner.py` provides `run_smoke(n_replications=20)` completing in ~41 seconds.
+

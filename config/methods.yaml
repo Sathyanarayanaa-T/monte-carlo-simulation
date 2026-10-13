@@ -1,7 +1,52 @@
-# Monte Carlo Simulation Methods Configuration
-# Placeholder for Milestone 2+ methods (M0 to M6)
+# Methods Configuration
 # SPEC.md Section 5
 
-methods:
-  # TODO: Milestone 2 will implement M0 to M3
-  # TODO: Milestone 3 will implement M4 to M6
+cv:
+  outer_folds: 5
+  outer_repeats: 2
+  inner_folds_default: 5
+  inner_folds_small_n: 3
+  small_n_threshold: 50
+
+m0:
+  name: "Training-fold mean"
+  description: "Baseline out-of-sample prediction benchmark"
+
+m1:
+  name: "Hierarchical OLS"
+  alpha_level: 0.05
+  cov_type: "HC3"
+  block1_contextual: ["score_B_i", "score_B_ii", "score_B_iii"]
+  block2_individual: ["score_A_tech", "score_A_mkt"]
+  covariates: ["semester", "covar_prototype", "covar_hackathon", "covar_internship"]
+  contrast_h2:
+    var_positive: "score_B_i"
+    var_negative: "score_B_ii"
+
+m1_adj:
+  name: "Marker-adjusted Hierarchical OLS"
+  alpha_level: 0.05
+  marker_items: ["score_M"]
+
+m2a:
+  name: "OLS + pre-specified interaction"
+  alpha_level: 0.05
+  interaction_pairs:
+    interaction: ["score_A_tech", "score_B_i"]
+    threshold: ["score_A_tech", "score_B_iii"]
+    none: ["score_A_tech", "score_B_i"]
+
+m2b:
+  name: "OLS + all 10 pairwise products"
+  alpha_level: 0.05
+  correction_method: "holm"
+  predictors: ["score_A_tech", "score_A_mkt", "score_B_i", "score_B_ii", "score_B_iii"]
+
+m3:
+  name: "Elastic Net with pairwise products"
+  l1_ratios: [0.5, 0.9, 1.0]
+  use_one_se_rule: true
+  stability_selection:
+    n_bootstraps: 100
+    threshold: 0.70
+  predictors: ["score_A_tech", "score_A_mkt", "score_B_i", "score_B_ii", "score_B_iii"]
