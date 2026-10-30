@@ -4,7 +4,7 @@ A rigorous, high-performance Monte Carlo simulation suite designed to evaluate t
 
 ---
 
-## 📌 Research Overview & Study Design
+##  Research Overview & Study Design
 
 In survey-based management, educational, and social science research, researchers frequently rely on linear additive models (e.g., OLS) while hypothesizing complex moderating or threshold dynamics. This simulation study benchmarks classical econometric estimators against regularized and non-linear machine learning architectures across finite sample regimes ($n \in \{50, 100, 150, 300\}$).
 
@@ -26,7 +26,7 @@ In survey-based management, educational, and social science research, researcher
 
 ---
 
-## 📁 Repository Structure
+##  Repository Structure
 
 ```
 ├── config/
@@ -61,7 +61,7 @@ In survey-based management, educational, and social science research, researcher
 
 ---
 
-## 🚀 Setup & Installation
+##  Setup & Installation
 
 The project uses Python 3.12 managed with [`uv`](https://docs.astral.sh/uv/).
 
@@ -83,7 +83,7 @@ uv run pytest -m "not slow"
 
 ---
 
-## 🔬 Simulation Workload & Tiers
+##  Simulation Workload & Tiers
 
 The study is partitioned into two execution tiers:
 
@@ -172,7 +172,7 @@ Output files will be saved directly into `report/figures/` (Figures 1–7 at 300
 
 ---
 
-## 📊 Key Architectural Decisions
+## Key Architectural Decisions
 
 All key project decisions and mathematical justifications are tracked in [`NOTES.md`](NOTES.md):
 * **D3 (Ceiling-Shift Direction)**: Applied in the scored direction to prevent floor effects on reverse-coded items from mimicking acquiescence bias.
@@ -185,6 +185,6 @@ All key project decisions and mathematical justifications are tracked in [`NOTES
 
 ---
 
-## 📜 License
+##  License
 
 Academic Research Project — FYP Monte Carlo Simulation Study.
