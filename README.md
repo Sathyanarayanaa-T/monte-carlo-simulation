@@ -95,7 +95,7 @@ The study is partitioned into two execution tiers:
 
 ---
 
-## 💻 How to Run the Simulation
+##  How to Run the Simulation
 
 ### Step 1: Real Hardware Timing Calibration (~5 min)
 Before running extensive simulations, calibrate execution speeds on your local hardware:
