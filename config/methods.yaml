@@ -1,124 +1,165 @@
-# Methods Configuration
-# SPEC.md Section 5
-
 cv:
   outer_folds: 5
   outer_repeats: 2
   inner_folds_default: 5
   inner_folds_small_n: 3
   small_n_threshold: 50
-
 shared_ml:
   alpha_level: 0.05
-  b_null_refits: 100  # SPEC.md line 99: 100 null refits (can be cut to 50 if compute is high)
-  substantive_predictors: ["score_A_tech", "score_A_mkt", "score_B_i", "score_B_ii", "score_B_iii"]
-
+  b_null_refits: 100
+  substantive_predictors:
+  - score_A_tech
+  - score_A_mkt
+  - score_B_i
+  - score_B_ii
+  - score_B_iii
 bootstrap_stability:
-  n_bootstraps: 50  # SPEC.md line 127: 50 bootstrap resamples for ranking stability
-
+  n_bootstraps: 50
 m0:
-  name: "Training-fold mean"
-  description: "Baseline out-of-sample prediction benchmark"
-
+  name: Training-fold mean
+  description: Baseline out-of-sample prediction benchmark
 m1:
-  name: "Hierarchical OLS"
+  name: Hierarchical OLS
   alpha_level: 0.05
-  cov_type: "HC3"
-  block1_contextual: ["score_B_i", "score_B_ii", "score_B_iii"]
-  block2_individual: ["score_A_tech", "score_A_mkt"]
-  covariates: ["semester", "covar_prototype", "covar_hackathon", "covar_internship"]
+  cov_type: HC3
+  block1_contextual:
+  - score_B_i
+  - score_B_ii
+  - score_B_iii
+  block2_individual:
+  - score_A_tech
+  - score_A_mkt
+  covariates:
+  - semester
+  - covar_prototype
+  - covar_hackathon
+  - covar_internship
   contrast_h2:
-    var_positive: "score_B_i"
-    var_negative: "score_B_ii"
-
+    var_positive: score_B_i
+    var_negative: score_B_ii
 m1_adj:
-  name: "Marker-adjusted Hierarchical OLS"
+  name: Marker-adjusted Hierarchical OLS
   alpha_level: 0.05
-  marker_items: ["score_M"]
-
+  marker_items:
+  - score_M
 m2a:
-  name: "OLS + pre-specified interaction"
+  name: OLS + pre-specified interaction
   alpha_level: 0.05
   interaction_pairs:
-    interaction: ["score_A_tech", "score_B_i"]
-    threshold: ["score_A_tech", "score_B_iii"]
-    none: ["score_A_tech", "score_B_i"]
-
+    interaction:
+    - score_A_tech
+    - score_B_i
+    threshold:
+    - score_A_tech
+    - score_B_iii
+    none:
+    - score_A_tech
+    - score_B_i
 m2b:
-  name: "OLS + all 10 pairwise products"
+  name: OLS + all 10 pairwise products
   alpha_level: 0.05
-  correction_method: "holm"
-  predictors: ["score_A_tech", "score_A_mkt", "score_B_i", "score_B_ii", "score_B_iii"]
-
+  correction_method: holm
+  predictors:
+  - score_A_tech
+  - score_A_mkt
+  - score_B_i
+  - score_B_ii
+  - score_B_iii
 m3:
-  name: "Elastic Net with pairwise products"
-  l1_ratios: [0.5, 0.9, 1.0]
+  name: Elastic Net with pairwise products
+  l1_ratios:
+  - 0.5
+  - 0.9
+  - 1.0
   use_one_se_rule: true
   stability_selection:
     n_bootstraps: 100
-    threshold: 0.70
-  predictors: ["score_A_tech", "score_A_mkt", "score_B_i", "score_B_ii", "score_B_iii"]
-
+    threshold: 0.7
+  predictors:
+  - score_A_tech
+  - score_A_mkt
+  - score_B_i
+  - score_B_ii
+  - score_B_iii
 m4:
-  name: "Random forest"
+  name: Random forest
   n_estimators: 300
   bootstrap: true
-  min_samples_leaf_grid: [3, 5, 10]
-  max_features_grid: [0.33, 0.5, 1.0]
-
+  min_samples_leaf_grid:
+  - 3
+  - 5
+  - 10
+  max_features_grid:
+  - 0.33
+  - 0.5
+  - 1.0
 m5:
-  name: "Gradient boosting"
+  name: Gradient boosting
   learning_rate: 0.03
   subsample: 0.7
   min_samples_leaf: 5
   inner_grid:
-    max_depth: [1, 2, 3]
-    n_estimators: [100, 200, 400]
-
+    max_depth:
+    - 1
+    - 2
+    - 3
+    n_estimators:
+    - 100
+    - 200
+    - 400
 m6:
-  name: "Explainable Boosting Machine"
+  name: Explainable Boosting Machine
   interactions: 10
   max_bins: 32
   learning_rate: 0.01
   outer_bags: 8
   min_samples_leaf: 3
-
 execution:
   n_jobs: 6
   master_seed: 20261013
-  results_dir: "results"
-  failure_log: "results/failures.log"
-
+  results_dir: results
+  failure_log: results/failures.log
 tiers:
   tier1:
-    name: "tier1"
-    description: "OLS family on all scenarios"
-    methods: ["M0", "M1", "M2a", "M2b", "M3"]
+    name: tier1
+    description: OLS family on all scenarios
+    methods:
+    - M0
+    - M1
+    - M2a
+    - M2b
+    - M3
     replications: 1000
-    scenarios: "all"
+    scenarios: all
     run_ml_interaction_tests: false
     run_stability_selection: true
   tier2:
-    name: "tier2"
-    description: "Reduced ML grid"
-    methods: ["M0", "M1", "M2a", "M2b", "M3", "M4", "M5", "M6"]
+    name: tier2
+    description: Reduced ML grid
+    methods:
+    - M0
+    - M1
+    - M2a
+    - M2b
+    - M3
+    - M4
+    - M5
+    - M6
     replications: 300
-    scenarios: "reduced_ml"
+    scenarios: reduced_ml
     run_ml_interaction_tests: true
     b_null_refits: 50
     run_stability_selection: true
-
 timing_pilot:
   seconds_per_rep:
-    tier1: 2.05
-    tier2: 65.0
+    tier1: 14.42
+    tier2: 523.75
   methods_single_fit_seconds:
-    M0: 0.00003
+    M0: 3.0e-05
     M1: 0.006
     M2a: 0.005
-    M2b: 0.070
-    M3: 0.100
+    M2b: 0.07
+    M3: 0.1
     M4: 1.115
     M5: 4.825
-    M6: 1.090
-
+    M6: 1.09
