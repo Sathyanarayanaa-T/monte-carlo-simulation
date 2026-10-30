@@ -32,7 +32,7 @@ echo "[1/4] Tier 1: base_n150_none (5 reps, n_jobs=6)..."
 T_START=$(date +%s.%N)
 uv run python -m src.run --tier tier1 --scenario base_n150_none --max-reps 5 --n-jobs 6 --out-dir "${TIMING_DIR}" --force
 T_END=$(date +%s.%N)
-DUR_T1_NONE=$(echo "$T_END - $T_START" | bc)
+DUR_T1_NONE=$(awk "BEGIN {printf \"%.4f\", $T_END - $T_START}")
 echo "  -> Completed in ${DUR_T1_NONE}s"
 
 echo ""
@@ -40,7 +40,7 @@ echo "[2/4] Tier 1: base_n150_inter_med (5 reps, n_jobs=6)..."
 T_START=$(date +%s.%N)
 uv run python -m src.run --tier tier1 --scenario base_n150_inter_med --max-reps 5 --n-jobs 6 --out-dir "${TIMING_DIR}" --force
 T_END=$(date +%s.%N)
-DUR_T1_INTER=$(echo "$T_END - $T_START" | bc)
+DUR_T1_INTER=$(awk "BEGIN {printf \"%.4f\", $T_END - $T_START}")
 echo "  -> Completed in ${DUR_T1_INTER}s"
 
 echo ""
@@ -48,7 +48,7 @@ echo "[3/4] Tier 2: base_n150_none (5 reps, n_jobs=6)..."
 T_START=$(date +%s.%N)
 uv run python -m src.run --tier tier2 --scenario base_n150_none --max-reps 5 --n-jobs 6 --out-dir "${TIMING_DIR}" --force
 T_END=$(date +%s.%N)
-DUR_T2_NONE=$(echo "$T_END - $T_START" | bc)
+DUR_T2_NONE=$(awk "BEGIN {printf \"%.4f\", $T_END - $T_START}")
 echo "  -> Completed in ${DUR_T2_NONE}s"
 
 echo ""
@@ -56,10 +56,11 @@ echo "[4/4] Tier 2: base_n150_inter_med (5 reps, n_jobs=6)..."
 T_START=$(date +%s.%N)
 uv run python -m src.run --tier tier2 --scenario base_n150_inter_med --max-reps 5 --n-jobs 6 --out-dir "${TIMING_DIR}" --force
 T_END=$(date +%s.%N)
-DUR_T2_INTER=$(echo "$T_END - $T_START" | bc)
+DUR_T2_INTER=$(awk "BEGIN {printf \"%.4f\", $T_END - $T_START}")
 echo "  -> Completed in ${DUR_T2_INTER}s"
 
-T_TOTAL=$(echo "$(date +%s.%N) - $T0" | bc)
+T_NOW=$(date +%s.%N)
+T_TOTAL=$(awk "BEGIN {printf \"%.4f\", $T_NOW - $T0}")
 
 # Calculate measured seconds per replication per tier and print component timing breakdown
 uv run python -c "

@@ -5,4 +5,5 @@ __pycache__/
 results/*.parquet
 timing_shards/
 logs/
+*.log
 

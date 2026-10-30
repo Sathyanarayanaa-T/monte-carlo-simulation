@@ -47,9 +47,11 @@ In survey-based management, educational, and social science research, researcher
 │   ├── compare_timing.py    # Timing calibration and config updater
 │   ├── null_calibration.py  # Residual-resampling interaction test Type I calibration check
 │   ├── sanity_report.py     # Live diagnostic reporter for finished Parquet shards
+│   ├── generate_paper_plots.py # Publication plot (Figs 1–7) & table generator
 │   ├── gate_check.py        # Structural-validity gate audit (HTMT, Parallel Analysis)
 │   ├── reliability_check.py # Scripted Cronbach's alpha and McDonald's omega audit
 │   └── backup_results.sh    # Parquet shard archive utility
+├── report/                  # Publication figures (report/figures) and tables (report/tables)
 ├── reports/                 # Audited empirical verification reports (tracked in Git)
 ├── tests/                   # Comprehensive unit and integration test suite
 ├── spec.md                  # Study specification and source of truth
@@ -161,6 +163,13 @@ nice -n 10 uv run python -m src.run --tier tier1 --group sens --max-reps 1000
 ./scripts/backup_results.sh /path/to/backup_directory
 ```
 
+### Step 6: Generate Publication Figures & Appendix Tables
+Once the simulation shards are written to `results/`, generate all 8 publication figures and appendix LaTeX/CSV tables:
+```bash
+uv run python scripts/generate_paper_plots.py --results-dir results/ --out-dir report/
+```
+Output files will be saved directly into `report/figures/` (Figures 1–7 at 300 DPI) and `report/tables/` (Tables 1–2 in `.csv` and `.tex`).
+
 ---
 
 ## 📊 Key Architectural Decisions
@@ -172,6 +181,7 @@ All key project decisions and mathematical justifications are tracked in [`NOTES
 * **D13 (Top-$k$ Feature Recovery Rule)**: Relative gap criterion $(v_k - v_{k+1}) / v_k \ge 0.10$ required for a well-defined top-$k$ target; returns `NaN` if oracle margin is insufficient.
 * **D18 (Replication-Level Resume)**: Shards are committed to Parquet in 25-replication batches with sidecar ID manifests, guaranteeing deterministic resumption without redundant compute.
 * **D25 (Report Provenance Rule)**: Every quantitative number in published documentation originates from an executable script output in `reports/<name>.txt`.
+* **D26 (Publication Plots & Tables)**: Standardized plot and table generator in `scripts/generate_paper_plots.py` automating Figures 1–7 and Tables 1–2 in `report/figures/` and `report/tables/` with the mandatory `[Simulated Data]` provenance label.
 
 ---
 
