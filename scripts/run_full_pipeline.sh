@@ -78,7 +78,7 @@ run_step() {
 # STEP 1: Hardware Timing Calibration (~3-5 min)
 # ------------------------------------------------------------------------------
 run_step "1/7" "Hardware Timing Calibration" \
-    bash -c "./scripts/time_e2e.sh && uv run python scripts/compare_timing.py"
+    bash -c "./scripts/time_e2e.sh && uv run python scripts/compare_timing.py --yes"
 
 # ------------------------------------------------------------------------------
 # STEP 2: Tier 1 Core Scenarios (28,000 tasks, ~2.5 hrs)

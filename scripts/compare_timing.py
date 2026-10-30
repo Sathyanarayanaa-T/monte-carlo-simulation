@@ -110,7 +110,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compare measured simulation timing against config.")
     parser.add_argument("--timing-dir", type=str, default="timing_shards", help="Directory with benchmark timing output")
     parser.add_argument("--config", type=str, default="config/methods.yaml", help="Path to methods.yaml")
-    parser.add_argument("--yes", "-y", action="store_true", help="Automatically confirm update if difference > 25%")
+    parser.add_argument("--yes", "-y", action="store_true", help="Automatically confirm update if difference > 25%%")
     args = parser.parse_args()
 
     compare_timing(
