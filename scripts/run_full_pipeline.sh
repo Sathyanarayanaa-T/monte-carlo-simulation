@@ -7,7 +7,7 @@
 #   2. Tier 1 Core Grid (28 scenarios x 1,000 replications = 28,000 tasks)
 #   3. Tier 1 Sensitivity Grid (40 scenarios x 1,000 replications = 40,000 tasks)
 #   4. ML Residual-Resampling Null Calibration (scripts/null_calibration.py)
-#   5. Tier 2 Machine Learning Grid (14 scenarios x 300 replications = 4,200 tasks)
+#   5. Tier 2 Machine Learning Grid (14 scenarios x 200 replications = 2,800 tasks)
 #   6. Parquet Results Archive & Backup (scripts/backup_results.sh)
 #   7. Publication Figures & Appendix Tables (scripts/generate_paper_plots.py)
 #
@@ -107,17 +107,14 @@ run_step "4/7" "Tier 2 Residual-Resampling Null Calibration" \
     uv run python scripts/null_calibration.py --reps 100 --reps-m6 50 --n-jobs 6 --out calibration/
 
 # ------------------------------------------------------------------------------
-# STEP 5: Tier 2 Machine Learning Grid (4,200 tasks, ~11.7 hrs)
+# STEP 5: Tier 2 Machine Learning Grid (2,800 tasks)
 # Staged in 100-replication intervals (Decision D16) for checkpointing
 # ------------------------------------------------------------------------------
 run_step "5/7 (Stage A)" "Tier 2 ML Grid: R = 100 Replications" \
     uv run python -m src.run --tier tier2 --max-reps 100
 
-run_step "5/7 (Stage B)" "Tier 2 ML Grid: R = 200 Replications" \
+run_step "5/7 (Stage B)" "Tier 2 ML Grid: R = 200 Replications (Final)" \
     uv run python -m src.run --tier tier2 --max-reps 200
-
-run_step "5/7 (Stage C)" "Tier 2 ML Grid: R = 300 Replications (Final)" \
-    uv run python -m src.run --tier tier2 --max-reps 300
 
 # ------------------------------------------------------------------------------
 # STEP 6: Backup Raw Parquet Shards
