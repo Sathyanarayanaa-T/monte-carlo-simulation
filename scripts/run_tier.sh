@@ -53,6 +53,11 @@ export NUMEXPR_NUM_THREADS=1
 
 mkdir -p logs results
 
+# Auto-detect parallel workers (leave 2 cores for OS on multi-core systems)
+TOTAL_CORES=$(nproc 2>/dev/null || echo 4)
+DEFAULT_JOBS=$(( TOTAL_CORES > 2 ? TOTAL_CORES - 2 : TOTAL_CORES ))
+N_JOBS="${N_JOBS:-$DEFAULT_JOBS}"
+
 if [ "$GROUP" = "all" ]; then
     LOG_FILE="logs/${TIER}.log"
 else
@@ -63,10 +68,11 @@ echo "========================================================================" 
 echo "Starting Run: Tier '${TIER}' Group '${GROUP}' at $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$LOG_FILE"
 echo "System: $(uname -a)" >> "$LOG_FILE"
 echo "Threads: OMP=$OMP_NUM_THREADS, OPENBLAS=$OPENBLAS_NUM_THREADS, MKL=$MKL_NUM_THREADS" >> "$LOG_FILE"
+echo "Workers: $N_JOBS parallel tasks (from $TOTAL_CORES detected cores)" >> "$LOG_FILE"
 echo "Nice: -n 10 | Systemd Inhibit: sleep:idle | Auto-resume: ENABLED" >> "$LOG_FILE"
 echo "========================================================================" >> "$LOG_FILE"
 
-echo "Running Tier '${TIER}' (Group '${GROUP}') under nice -n 10 and systemd-inhibit. Logging to ${LOG_FILE}..."
+echo "Running Tier '${TIER}' (Group '${GROUP}', Workers: ${N_JOBS}) under nice -n 10 and systemd-inhibit. Logging to ${LOG_FILE}..."
 
 # Execute with systemd-inhibit, nice, and append to log file while teeing to terminal
 systemd-inhibit --what=sleep:idle \
@@ -74,7 +80,7 @@ systemd-inhibit --what=sleep:idle \
     --why="Running ${TIER} (${GROUP}) simulation batch" \
     --mode=block \
     nice -n 10 \
-    uv run python -m src.run --tier "$TIER" --group "$GROUP" 2>&1 | tee -a "$LOG_FILE"
+    uv run python -m src.run --tier "$TIER" --group "$GROUP" --n-jobs "$N_JOBS" 2>&1 | tee -a "$LOG_FILE"
 
 EXIT_CODE="${PIPESTATUS[0]}"
 

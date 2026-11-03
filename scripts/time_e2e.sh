@@ -19,42 +19,48 @@ TIMING_DIR="timing_shards"
 rm -rf "${TIMING_DIR}"
 mkdir -p "${TIMING_DIR}"
 
+# Auto-detect parallel workers (leave 2 cores for OS on multi-core systems)
+TOTAL_CORES=$(nproc 2>/dev/null || echo 4)
+DEFAULT_JOBS=$(( TOTAL_CORES > 2 ? TOTAL_CORES - 2 : TOTAL_CORES ))
+N_JOBS="${N_JOBS:-$DEFAULT_JOBS}"
+
 echo "========================================================================"
 echo "Starting End-to-End Timing Benchmark (5 replications each at n=150)"
 echo "Output Directory: ${TIMING_DIR} (writes outside results/)"
+echo "Parallel Workers: ${N_JOBS} (from ${TOTAL_CORES} detected CPU cores)"
 echo "Expected Total Time: ~3 to 5 minutes"
 echo "========================================================================"
 
 T0=$(date +%s.%N)
 
 echo ""
-echo "[1/4] Tier 1: base_n150_none (5 reps, n_jobs=6)..."
+echo "[1/4] Tier 1: base_n150_none (5 reps, n_jobs=${N_JOBS})..."
 T_START=$(date +%s.%N)
-uv run python -m src.run --tier tier1 --scenario base_n150_none --max-reps 5 --n-jobs 6 --out-dir "${TIMING_DIR}" --force
+uv run python -m src.run --tier tier1 --scenario base_n150_none --max-reps 5 --n-jobs "$N_JOBS" --out-dir "${TIMING_DIR}" --force
 T_END=$(date +%s.%N)
 DUR_T1_NONE=$(awk "BEGIN {printf \"%.4f\", $T_END - $T_START}")
 echo "  -> Completed in ${DUR_T1_NONE}s"
 
 echo ""
-echo "[2/4] Tier 1: base_n150_inter_med (5 reps, n_jobs=6)..."
+echo "[2/4] Tier 1: base_n150_inter_med (5 reps, n_jobs=${N_JOBS})..."
 T_START=$(date +%s.%N)
-uv run python -m src.run --tier tier1 --scenario base_n150_inter_med --max-reps 5 --n-jobs 6 --out-dir "${TIMING_DIR}" --force
+uv run python -m src.run --tier tier1 --scenario base_n150_inter_med --max-reps 5 --n-jobs "$N_JOBS" --out-dir "${TIMING_DIR}" --force
 T_END=$(date +%s.%N)
 DUR_T1_INTER=$(awk "BEGIN {printf \"%.4f\", $T_END - $T_START}")
 echo "  -> Completed in ${DUR_T1_INTER}s"
 
 echo ""
-echo "[3/4] Tier 2: base_n150_none (5 reps, n_jobs=6)..."
+echo "[3/4] Tier 2: base_n150_none (5 reps, n_jobs=${N_JOBS})..."
 T_START=$(date +%s.%N)
-uv run python -m src.run --tier tier2 --scenario base_n150_none --max-reps 5 --n-jobs 6 --out-dir "${TIMING_DIR}" --force
+uv run python -m src.run --tier tier2 --scenario base_n150_none --max-reps 5 --n-jobs "$N_JOBS" --out-dir "${TIMING_DIR}" --force
 T_END=$(date +%s.%N)
 DUR_T2_NONE=$(awk "BEGIN {printf \"%.4f\", $T_END - $T_START}")
 echo "  -> Completed in ${DUR_T2_NONE}s"
 
 echo ""
-echo "[4/4] Tier 2: base_n150_inter_med (5 reps, n_jobs=6)..."
+echo "[4/4] Tier 2: base_n150_inter_med (5 reps, n_jobs=${N_JOBS})..."
 T_START=$(date +%s.%N)
-uv run python -m src.run --tier tier2 --scenario base_n150_inter_med --max-reps 5 --n-jobs 6 --out-dir "${TIMING_DIR}" --force
+uv run python -m src.run --tier tier2 --scenario base_n150_inter_med --max-reps 5 --n-jobs "$N_JOBS" --out-dir "${TIMING_DIR}" --force
 T_END=$(date +%s.%N)
 DUR_T2_INTER=$(awk "BEGIN {printf \"%.4f\", $T_END - $T_START}")
 echo "  -> Completed in ${DUR_T2_INTER}s"

@@ -17,6 +17,7 @@ import argparse
 from datetime import datetime, timezone
 import importlib.metadata
 import json
+import os
 from pathlib import Path
 import platform
 import subprocess
@@ -570,7 +571,13 @@ def run_simulation(
     methods_cfg = load_methods_config()
     exec_cfg = methods_cfg.get("execution", {})
 
-    n_jobs = n_jobs_override if n_jobs_override is not None else int(exec_cfg.get("n_jobs", 4))
+    env_jobs = os.environ.get("N_JOBS")
+    if n_jobs_override is not None:
+        n_jobs = n_jobs_override
+    elif env_jobs is not None:
+        n_jobs = int(env_jobs)
+    else:
+        n_jobs = int(exec_cfg.get("n_jobs", 4))
     master_seed = int(exec_cfg.get("master_seed", 20261013))
 
     if results_dir_override is not None:
