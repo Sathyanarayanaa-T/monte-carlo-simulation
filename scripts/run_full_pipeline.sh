@@ -35,6 +35,12 @@ echo "UTC Start Time: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo "Repository:     $REPO_ROOT"
 echo "Git Commit:     $(git rev-parse HEAD) (dirty: $(git status --porcelain | wc -l))"
 echo "Hardware:       $(lscpu | grep 'Model name' | sed 's/Model name:[ ]*//')"
+
+# Auto-detect parallel workers (leave 2 cores for OS on multi-core systems)
+TOTAL_CORES=$(nproc 2>/dev/null || echo 4)
+DEFAULT_JOBS=$(( TOTAL_CORES > 2 ? TOTAL_CORES - 2 : TOTAL_CORES ))
+N_JOBS="${N_JOBS:-$DEFAULT_JOBS}"
+echo "Workers:        $N_JOBS parallel tasks (from $TOTAL_CORES detected cores)"
 echo "================================================================================"
 
 # Pinned threadpools to avoid oversubscription (Decision D10)
@@ -104,17 +110,17 @@ uv run python scripts/sanity_report.py --group sens
 # STEP 4: Tier 2 Null Calibration Check (~2 min)
 # ------------------------------------------------------------------------------
 run_step "4/7" "Tier 2 Residual-Resampling Null Calibration" \
-    uv run python scripts/null_calibration.py --reps 100 --reps-m6 50 --n-jobs 6 --out calibration/
+    uv run python scripts/null_calibration.py --reps 100 --reps-m6 50 --n-jobs "$N_JOBS" --out calibration/
 
 # ------------------------------------------------------------------------------
 # STEP 5: Tier 2 Machine Learning Grid (2,800 tasks)
 # Staged in 100-replication intervals (Decision D16) for checkpointing
 # ------------------------------------------------------------------------------
 run_step "5/7 (Stage A)" "Tier 2 ML Grid: R = 100 Replications" \
-    uv run python -m src.run --tier tier2 --max-reps 100
+    uv run python -m src.run --tier tier2 --max-reps 100 --n-jobs "$N_JOBS"
 
 run_step "5/7 (Stage B)" "Tier 2 ML Grid: R = 200 Replications (Final)" \
-    uv run python -m src.run --tier tier2 --max-reps 200
+    uv run python -m src.run --tier tier2 --max-reps 200 --n-jobs "$N_JOBS"
 
 # ------------------------------------------------------------------------------
 # STEP 6: Backup Raw Parquet Shards
