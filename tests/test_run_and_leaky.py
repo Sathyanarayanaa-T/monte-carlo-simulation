@@ -238,10 +238,11 @@ def test_failure_logging(tmp_path: Path, fast_scenario: dict):
     assert "TypeError" in content or "KeyError" in content or "AttributeError" in content
 
 
-def test_dry_run_flag(capsys):
+def test_dry_run_flag(capsys, tmp_path):
     """Verify --dry-run prints task count and timing estimates without creating files."""
     run_simulation(
         tier="tier1",
+        results_dir_override=tmp_path,
         dry_run=True,
         verbose=True,
     )

@@ -522,6 +522,7 @@ def print_dry_run_summary(
         print(f"  Est. Wall-Clock (n_jobs={n_jobs}): {tier_wall_sec:,.1f}s ({tier_wall_sec / 3600:.2f} hours, or ~{tier_wall_sec / 60:.1f} mins)")
 
     # Tier 2 staged projection (Milestone 6.7 Part C.4)
+    t2_scenarios = get_scenarios_for_tier("tier2", methods_cfg, group=group)
     measured_json = Path("timing_shards/measured_timing.json")
     if measured_json.exists():
         try:
@@ -533,7 +534,6 @@ def print_dry_run_summary(
             t2_sec_task = 65.0
             t2_source = "MODEL ESTIMATE"
     else:
-        t2_scenarios = get_scenarios_for_tier("tier2", methods_cfg, group=group)
         t2_cfg = methods_cfg.get("tiers", {}).get("tier2", {})
         t2_methods = t2_cfg.get("methods", ["M0", "M1", "M2a", "M2b", "M3", "M4", "M5", "M6"])
         t2_sec_task = float(np.mean([
