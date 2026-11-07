@@ -145,7 +145,7 @@ tiers:
     - M4
     - M5
     - M6
-    replications: 200
+    replications: 100
     scenarios: reduced_ml
     run_ml_interaction_tests: true
     b_null_refits: 50

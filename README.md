@@ -91,7 +91,7 @@ The study is partitioned into two execution tiers:
   * **Core Group (28 Scenarios)**: Base, $h_1\text{-null}$, and $h_2\text{-null}$ scenarios across $n \in \{50, 100, 150, 300\}$ at 1,000 replications (28,000 tasks).
   * **Sensitivity Group (40 Scenarios)**: Cross-loadings ($\lambda_{\text{cross}} \in \{0.3, 0.5\}$), indicator contamination ($\kappa = 0.4$), common method variance ($\gamma = 0.3$), low reliability, and high latent correlation ($r = 0.60$) at 1,000 replications (40,000 tasks).
 * **Tier 2 (Full ML Grid — M0 through M6)**:
-  * **14 Scenarios**: Core signal, interaction, and threshold scenarios at 200 replications ($2,800$ tasks). Staged in steps of $R=100$.
+  * **14 Scenarios**: Core signal, interaction, and threshold scenarios at 100 replications ($1,400$ tasks).
 
 ---
 
@@ -148,13 +148,10 @@ nice -n 10 uv run python -m src.run --tier tier1 --group sens --max-reps 1000
    ```bash
    uv run python scripts/null_calibration.py --reps 100 --reps-m6 50 --n-jobs 6 --out calibration/
    ```
-2. **Execute Tier 2 in Stages**:
+2. **Execute Tier 2 Machine Learning Grid**:
    ```bash
-   # Stage A (R = 100 reps)
+   # Run Tier 2 ML Grid (R = 100 reps)
    nice -n 10 uv run python -m src.run --tier tier2 --max-reps 100
-
-   # Stage B (R = 200 reps - Final)
-   nice -n 10 uv run python -m src.run --tier tier2 --max-reps 200
    ```
 
 ### Step 5: Archive & Back Up Results

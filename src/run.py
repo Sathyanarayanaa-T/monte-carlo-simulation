@@ -547,7 +547,7 @@ def print_dry_run_summary(
     print(f"\n[TIER 2 PROJECTION: {t2_n_scenarios} SCENARIOS, n_jobs = {n_jobs}]")
     print("-" * 88)
     print(f"  Benchmark Basis:         {t2_source} ({t2_sec_task:.2f}s per task)")
-    for r_stage in [100, 200]:
+    for r_stage in [100]:
         t2_total_seq = t2_n_scenarios * r_stage * t2_sec_task
         t2_wall_sec = t2_total_seq / max(1, n_jobs)
         t2_wall_hr = t2_wall_sec / 3600.0
