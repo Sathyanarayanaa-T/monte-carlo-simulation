@@ -37,9 +37,9 @@ echo "Git Commit:     $(git rev-parse HEAD) (dirty: $(git status --porcelain | w
 echo "Hardware:       $(lscpu | grep 'Model name' | sed 's/Model name:[ ]*//')"
 
 # Auto-detect parallel workers (leave 2 cores for OS on multi-core systems)
-TOTAL_CORES=$(nproc 2>/dev/null || echo 4)
+TOTAL_CORES=$(nproc --all 2>/dev/null || echo 4)
 DEFAULT_JOBS=$(( TOTAL_CORES > 2 ? TOTAL_CORES - 2 : TOTAL_CORES ))
-N_JOBS="${N_JOBS:-$DEFAULT_JOBS}"
+export N_JOBS="${N_JOBS:-$DEFAULT_JOBS}"
 echo "Workers:        $N_JOBS parallel tasks (from $TOTAL_CORES detected cores)"
 echo "================================================================================"
 

@@ -54,9 +54,9 @@ export NUMEXPR_NUM_THREADS=1
 mkdir -p logs results
 
 # Auto-detect parallel workers (leave 2 cores for OS on multi-core systems)
-TOTAL_CORES=$(nproc 2>/dev/null || echo 4)
+TOTAL_CORES=$(nproc --all 2>/dev/null || echo 4)
 DEFAULT_JOBS=$(( TOTAL_CORES > 2 ? TOTAL_CORES - 2 : TOTAL_CORES ))
-N_JOBS="${N_JOBS:-$DEFAULT_JOBS}"
+export N_JOBS="${N_JOBS:-$DEFAULT_JOBS}"
 
 if [ "$GROUP" = "all" ]; then
     LOG_FILE="logs/${TIER}.log"

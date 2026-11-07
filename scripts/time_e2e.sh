@@ -20,9 +20,9 @@ rm -rf "${TIMING_DIR}"
 mkdir -p "${TIMING_DIR}"
 
 # Auto-detect parallel workers (leave 2 cores for OS on multi-core systems)
-TOTAL_CORES=$(nproc 2>/dev/null || echo 4)
+TOTAL_CORES=$(nproc --all 2>/dev/null || echo 4)
 DEFAULT_JOBS=$(( TOTAL_CORES > 2 ? TOTAL_CORES - 2 : TOTAL_CORES ))
-N_JOBS="${N_JOBS:-$DEFAULT_JOBS}"
+export N_JOBS="${N_JOBS:-$DEFAULT_JOBS}"
 
 echo "========================================================================"
 echo "Starting End-to-End Timing Benchmark (5 replications each at n=150)"
