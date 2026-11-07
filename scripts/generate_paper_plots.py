@@ -70,8 +70,8 @@ METHOD_LABELS = {
 
 
 def apply_plot_style(ax: plt.Axes, title: str, xlabel: str, ylabel: str) -> None:
-    """Apply consistent styling and the mandatory SPEC line 18 label."""
-    ax.set_title(f"{title}\n[Simulated Data]", fontsize=11, fontweight="bold", pad=8)
+    """Apply consistent styling."""
+    ax.set_title(title, fontsize=11, fontweight="bold", pad=8)
     ax.set_xlabel(xlabel, fontsize=10, fontweight="medium")
     ax.set_ylabel(ylabel, fontsize=10, fontweight="medium")
     ax.grid(True, linestyle="--", alpha=0.5, color="#cccccc")
@@ -609,7 +609,7 @@ def generate_figure7_sensitivity_heatmap(
             text_color = "white" if abs(val) > 0.25 else "black"
             ax.text(j, i, f"{val:+.3f}", ha="center", va="center", color=text_color, fontweight="bold")
 
-    ax.set_title("Figure 7: Sensitivity Analysis Heatmap (n = 150)\n[Simulated Data]", fontsize=11, fontweight="bold", pad=15)
+    ax.set_title("Figure 7: Sensitivity Analysis Heatmap (n = 150)", fontsize=11, fontweight="bold", pad=15)
     fig.tight_layout()
     out_path = out_dir / "figure7_sensitivity_heatmap.png"
     fig.savefig(out_path, dpi=dpi)
